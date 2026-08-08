@@ -1,4 +1,5 @@
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useCallback } from "react";
+import { useSupabaseTable, useSupabaseKV } from "./useSupabase";
 import {
   LayoutDashboard, Users, Crown, MapPin,
   ClipboardList, Calendar as CalendarIcon, PartyPopper, Map,
@@ -389,10 +390,10 @@ function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, materi
   );
 }
 
-function EleitoresView({ items, setItems, liderancas }) {
+function EleitoresView({ items, setItems, liderancas, table }) {
   const [query, setQuery] = useState("");
   const [bairroFiltro, setBairroFiltro] = useState("Todos");
-  const [modal, setModal] = useState(null); // {mode:'new'|'edit', data}
+  const [modal, setModal] = useState(null);
 
   const filtered = useMemo(() => items.filter(e =>
     (bairroFiltro === "Todos" || e.bairro === bairroFiltro) &&
@@ -400,20 +401,19 @@ function EleitoresView({ items, setItems, liderancas }) {
   ), [items, query, bairroFiltro]);
 
   function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", tags: "", intencoes: intencoesPadrao() } }); }
-  function openEdit(item) { setModal({ mode: "edit", data: { ...item, tags: item.tags.join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } }); }
 
   function save(form) {
     const tagsArr = form.tags.split(",").map(t => t.trim()).filter(Boolean);
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id, tags: tagsArr, cadastro: new Date().toISOString().slice(0, 10) }, ...items]);
+      table.insert({ ...form, tags: tagsArr, cadastro: new Date().toISOString().slice(0, 10) });
     } else {
-      setItems(items.map(i => i.id === form.id ? { ...form, tags: tagsArr } : i));
+      table.update(form.id, { ...form, tags: tagsArr });
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
-  function changeNivel(id, status) { setItems(items.map(i => i.id === id ? { ...i, status } : i)); }
+  function remove(id) { table.remove(id); }
+  function changeNivel(id, status) { table.update(id, { status }); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -553,21 +553,20 @@ function FormEleitor({ data, liderancas, onSave }) {
   );
 }
 
-function LiderancasView({ items, setItems, eleitores }) {
+function LiderancasView({ items, setItems, eleitores, table }) {
   const [modal, setModal] = useState(null);
 
   function openNew() { setModal({ mode: "new", data: { nome: "", bairro: "", telefone: "", status: "Ativa" } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id, apoiadores: 0 }, ...items]);
+      table.insert({ ...form, apoiadores: 0 });
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -633,7 +632,7 @@ function FormLideranca({ data, onSave }) {
   );
 }
 
-function DemandasView({ items, setItems }) {
+function DemandasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statuses = ["Nova", "Em análise", "Em andamento", "Resolvida", "Cancelada"];
 
@@ -641,15 +640,14 @@ function DemandasView({ items, setItems }) {
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id }, ...items]);
+      table.insert(form);
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
-  function changeStatus(id, status) { setItems(items.map(i => i.id === id ? { ...i, status } : i)); }
+  function remove(id) { table.remove(id); }
+  function changeStatus(id, status) { table.update(id, { status }); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -729,7 +727,7 @@ function FormDemanda({ data, onSave, statuses }) {
   );
 }
 
-function AgendaView({ items, setItems }) {
+function AgendaView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const grouped = useMemo(() => {
     const g = {};
@@ -740,18 +738,17 @@ function AgendaView({ items, setItems }) {
     return g;
   }, [items]);
 
-  function openNew() { setModal({ mode: "new", data: { titulo: "", data: "2026-08-08", hora: "09:00", local: "", responsavel: "" } }); }
+  function openNew() { setModal({ mode: "new", data: { titulo: "", data: new Date().toISOString().slice(0, 10), hora: "09:00", local: "", responsavel: "" } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([...items, { ...form, id }]);
+      table.insert(form);
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -812,7 +809,7 @@ function FormAgenda({ data, onSave }) {
   );
 }
 
-function GastosView({ items, setItems }) {
+function GastosView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const total = items.reduce((s, g) => s + Number(g.valor || 0), 0);
   const fmt = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -822,14 +819,13 @@ function GastosView({ items, setItems }) {
   function save(form) {
     const payload = { ...form, valor: Number(form.valor) || 0 };
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...payload, id }, ...items]);
+      table.insert(payload);
     } else {
-      setItems(items.map(i => i.id === form.id ? payload : i));
+      table.update(form.id, payload);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -901,7 +897,7 @@ function FormGasto({ data, onSave }) {
   );
 }
 
-function MaterialView({ items, setItems }) {
+function MaterialView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
 
   function openNew() { setModal({ mode: "new", data: { nome: "", quantidadeTotal: "", quantidadeDistribuida: "", custoUnitario: "", observacoes: "" } }); }
@@ -909,14 +905,13 @@ function MaterialView({ items, setItems }) {
   function save(form) {
     const payload = { ...form, quantidadeTotal: Number(form.quantidadeTotal) || 0, quantidadeDistribuida: Number(form.quantidadeDistribuida) || 0, custoUnitario: Number(form.custoUnitario) || 0 };
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([...items, { ...payload, id }]);
+      table.insert(payload);
     } else {
-      setItems(items.map(i => i.id === form.id ? payload : i));
+      table.update(form.id, payload);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -975,7 +970,7 @@ function FormMaterial({ data, onSave }) {
   );
 }
 
-function VisitasView({ items, setItems }) {
+function VisitasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const resultTone = { "Positiva": "cc-badge-resolvida", "Indeciso": "cc-badge-analise", "Negativa": "cc-badge-cancelada" };
 
@@ -983,14 +978,13 @@ function VisitasView({ items, setItems }) {
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id }, ...items]);
+      table.insert(form);
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1059,7 +1053,7 @@ function FormVisita({ data, onSave }) {
   );
 }
 
-function EventosView({ items, setItems }) {
+function EventosView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const sorted = useMemo(() => [...items].sort((a, b) => (a.data + a.hora).localeCompare(b.data + b.hora)), [items]);
 
@@ -1068,14 +1062,13 @@ function EventosView({ items, setItems }) {
   function save(form) {
     const payload = { ...form, publicoEstimado: Number(form.publicoEstimado) || 0 };
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([...items, { ...payload, id }]);
+      table.insert(payload);
     } else {
-      setItems(items.map(i => i.id === form.id ? payload : i));
+      table.update(form.id, payload);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1138,7 +1131,7 @@ function FormEvento({ data, onSave }) {
   );
 }
 
-function TarefasView({ items, setItems }) {
+function TarefasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statuses = ["Pendente", "Em andamento", "Concluída"];
   const statusTone = { "Pendente": "cc-badge-nova", "Em andamento": "cc-badge-andamento", "Concluída": "cc-badge-resolvida" };
@@ -1147,15 +1140,14 @@ function TarefasView({ items, setItems }) {
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id }, ...items]);
+      table.insert(form);
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function changeStatus(id, status) { setItems(items.map(i => i.id === id ? { ...i, status } : i)); }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function changeStatus(id, status) { table.update(id, { status }); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1219,7 +1211,7 @@ function FormTarefa({ data, onSave, statuses }) {
   );
 }
 
-function RelatoriosView({ eleitores, metas, setMetas }) {
+function RelatoriosView({ eleitores, metas, setMetas, metasKV }) {
   const [editingMeta, setEditingMeta] = useState(null);
 
   const linhas = CARGOS.map(cargo => {
@@ -1232,7 +1224,7 @@ function RelatoriosView({ eleitores, metas, setMetas }) {
   });
 
   function saveMeta(cargo, valor) {
-    setMetas({ ...metas, [cargo]: Number(valor) || 0 });
+    metasKV.setValue(cargo, Number(valor) || 0);
     setEditingMeta(null);
   }
 
@@ -1309,23 +1301,22 @@ function RelatoriosView({ eleitores, metas, setMetas }) {
   );
 }
 
-function PesquisasView({ items, setItems }) {
+function PesquisasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
 
   function openNew() { setModal({ mode: "new", data: { titulo: "", data: "", responsavel: "", opcoes: [{ texto: "", respostas: 0 }, { texto: "", respostas: 0 }] } }); }
-  function openEdit(item) { setModal({ mode: "edit", data: { ...item, opcoes: item.opcoes.map(o => ({ ...o })) } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: { ...item, opcoes: (item.opcoes || []).map(o => ({ ...o })) } }); }
   function save(form) {
     const opcoes = form.opcoes.filter(o => o.texto.trim());
     const payload = { ...form, opcoes };
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...payload, id }, ...items]);
+      table.insert(payload);
     } else {
-      setItems(items.map(i => i.id === form.id ? payload : i));
+      table.update(form.id, payload);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1412,7 +1403,7 @@ function FormPesquisa({ data, onSave }) {
   );
 }
 
-function DocumentosView({ items, setItems }) {
+function DocumentosView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const categoriaTone = { "Jurídico": "cc-badge-analise", "Financeiro": "cc-badge-andamento", "Comunicação": "cc-badge-nova", "Outros": "cc-badge-resolvida" };
 
@@ -1420,14 +1411,13 @@ function DocumentosView({ items, setItems }) {
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
-      const id = Math.max(0, ...items.map(i => i.id)) + 1;
-      setItems([{ ...form, id }, ...items]);
+      table.insert(form);
     } else {
-      setItems(items.map(i => i.id === form.id ? form : i));
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) { setItems(items.filter(i => i.id !== id)); }
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
@@ -1524,18 +1514,42 @@ function EmBreveView({ label }) {
 // ---------------------------------------------------------------------------
 export default function App() {
   const [view, setView] = useState("dashboard");
-  const [eleitores, setEleitores] = useState(seedEleitores);
-  const [liderancas, setLiderancas] = useState(seedLiderancas);
-  const [demandas, setDemandas] = useState(seedDemandas);
-  const [agenda, setAgenda] = useState(seedAgenda);
-  const [gastos, setGastos] = useState(seedGastos);
-  const [material, setMaterial] = useState(seedMaterial);
-  const [visitas, setVisitas] = useState(seedVisitas);
-  const [eventos, setEventos] = useState(seedEventos);
-  const [tarefas, setTarefas] = useState(seedTarefas);
-  const [metasVotos, setMetasVotos] = useState(seedMetasVotos);
-  const [pesquisas, setPesquisas] = useState(seedPesquisas);
-  const [documentos, setDocumentos] = useState(seedDocumentos);
+  const eleitoresTable = useSupabaseTable("eleitores", seedEleitores);
+  const liderancasTable = useSupabaseTable("liderancas", seedLiderancas);
+  const demandasTable = useSupabaseTable("demandas", seedDemandas);
+  const agendaTable = useSupabaseTable("agenda", seedAgenda);
+  const gastosTable = useSupabaseTable("gastos", seedGastos);
+  const materialTable = useSupabaseTable("material", seedMaterial);
+  const visitasTable = useSupabaseTable("visitas", seedVisitas);
+  const eventosTable = useSupabaseTable("eventos", seedEventos);
+  const tarefasTable = useSupabaseTable("tarefas", seedTarefas);
+  const metasVotosKV = useSupabaseKV("metas_votos", seedMetasVotos);
+  const pesquisasTable = useSupabaseTable("pesquisas", seedPesquisas);
+  const documentosTable = useSupabaseTable("documentos", seedDocumentos);
+
+  const eleitores = eleitoresTable.items;
+  const setEleitores = eleitoresTable.setItems;
+  const liderancas = liderancasTable.items;
+  const setLiderancas = liderancasTable.setItems;
+  const demandas = demandasTable.items;
+  const setDemandas = demandasTable.setItems;
+  const agenda = agendaTable.items;
+  const setAgenda = agendaTable.setItems;
+  const gastos = gastosTable.items;
+  const setGastos = gastosTable.setItems;
+  const material = materialTable.items;
+  const setMaterial = materialTable.setItems;
+  const visitas = visitasTable.items;
+  const setVisitas = visitasTable.setItems;
+  const eventos = eventosTable.items;
+  const setEventos = eventosTable.setItems;
+  const tarefas = tarefasTable.items;
+  const setTarefas = tarefasTable.setItems;
+  const [metasVotos, setMetasVotos] = [metasVotosKV.data, metasVotosKV.setData];
+  const pesquisas = pesquisasTable.items;
+  const setPesquisas = pesquisasTable.setItems;
+  const documentos = documentosTable.items;
+  const setDocumentos = documentosTable.setItems;
 
   const current = MENU.find(m => m.key === view);
 
@@ -1587,18 +1601,18 @@ export default function App() {
 
         <main className="flex-1 p-4 sm:p-6 cc-fade-in">
           {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} />}
-          {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} />}
-          {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} />}
-          {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} />}
-          {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} />}
-          {view === "gastos" && <GastosView items={gastos} setItems={setGastos} />}
-          {view === "material" && <MaterialView items={material} setItems={setMaterial} />}
-          {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} />}
-          {view === "eventos" && <EventosView items={eventos} setItems={setEventos} />}
-          {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} />}
-          {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} />}
-          {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} />}
-          {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} />}
+          {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
+          {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
+          {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
+          {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
+          {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
+          {view === "material" && <MaterialView items={material} setItems={setMaterial} table={materialTable} />}
+          {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} table={visitasTable} />}
+          {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
+          {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
+          {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} />}
+          {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} />}
+          {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
           {current && !current.active && <EmBreveView label={current.label} />}
         </main>
       </div>
