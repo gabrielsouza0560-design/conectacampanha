@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useCallback } from "react";
 import { useSupabaseTable, useSupabaseKV } from "./useSupabase";
+import InstallPrompt from "./InstallPrompt";
 import {
   LayoutDashboard, Users, Crown, MapPin,
   ClipboardList, Calendar as CalendarIcon, PartyPopper, Map,
@@ -1554,7 +1555,7 @@ export default function App() {
   const current = MENU.find(m => m.key === view);
 
   return (
-    <div className="cc-root min-h-screen flex flex-col">
+    <div className="cc-root min-h-screen flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
       <style>{THEME}</style>
 
       {/* Topbar */}
@@ -1616,6 +1617,8 @@ export default function App() {
           {current && !current.active && <EmBreveView label={current.label} />}
         </main>
       </div>
+
+      <InstallPrompt />
     </div>
   );
 }

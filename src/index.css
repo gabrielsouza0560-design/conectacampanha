@@ -1,1 +1,33 @@
 @import "tailwindcss";
+
+html {
+  -webkit-tap-highlight-color: transparent;
+  -webkit-text-size-adjust: 100%;
+  overscroll-behavior-y: contain;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  min-height: 100dvh;
+  touch-action: manipulation;
+}
+
+*,
+*::before,
+*::after {
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+button {
+  font-size: 16px;
+}
+
+@supports (padding: env(safe-area-inset-bottom)) {
+  body {
+    padding-bottom: env(safe-area-inset-bottom);
+  }
+}
