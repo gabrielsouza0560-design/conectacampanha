@@ -181,22 +181,29 @@ const chartData = [
 
 const bairroData = BAIRROS.map((b, i) => ({ bairro: b, apoiadores: [128, 40, 96, 62, 54, 54][i] }));
 
-const MENU = [
-  { key: "dashboard", label: "Dashboard", icon: LayoutDashboard, active: true },
-  { key: "eleitores", label: "Eleitores", icon: Users, active: true },
+const BOTTOM_TABS = [
+  { key: "eleitores", label: "Eleitores", icon: Users },
+  { key: "demandas", label: "Demandas", icon: ClipboardList },
+  { key: "agenda", label: "Agenda", icon: CalendarIcon },
+  { key: "relatorios", label: "Votos", icon: Vote },
+];
+
+const MORE_ITEMS = [
   { key: "liderancas", label: "Lideranças", icon: Crown, active: true },
-  { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
-  { key: "agenda", label: "Agenda", icon: CalendarIcon, active: true },
   { key: "gastos", label: "Gastos", icon: Wallet, active: true },
   { key: "material", label: "Material", icon: Package, active: true },
   { key: "visitas", label: "Visitas", icon: MapPin, active: true },
   { key: "eventos", label: "Eventos", icon: PartyPopper, active: true },
   { key: "tarefas", label: "Tarefas", icon: CheckSquare, active: true },
-  { key: "relatorios", label: "Relatórios", icon: Printer, active: true },
   { key: "pesquisas", label: "Pesquisas", icon: BarChart3, active: true },
   { key: "documentos", label: "Documentos", icon: FileText, active: true },
   { key: "mapa", label: "Mapa Eleitoral", icon: Map, active: false },
   { key: "comunicacao", label: "Comunicação", icon: MessageCircle, active: false },
+];
+
+const MENU = [
+  ...BOTTOM_TABS.map(t => ({ ...t, active: true })),
+  ...MORE_ITEMS,
 ];
 
 // ---------------------------------------------------------------------------
@@ -272,124 +279,6 @@ function EmptyState({ text }) {
 // ---------------------------------------------------------------------------
 // Views
 // ---------------------------------------------------------------------------
-function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, material }) {
-  const abertas = demandas.filter(d => d.status !== "Resolvida" && d.status !== "Cancelada").length;
-  const concluidas = demandas.filter(d => d.status === "Resolvida").length;
-  const apoiadoresCount = eleitores.filter(e => e.status === "Confirmado").length;
-  const votosEsperados = apoiadoresCount * 30 + eleitores.filter(e => e.status === "Pendente").length * 10;
-  const totalGasto = gastos.reduce((s, g) => s + g.valor, 0);
-  const materialRestante = material.reduce((s, m) => s + (m.quantidadeTotal - m.quantidadeDistribuida), 0);
-  const fmt = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-
-  const niveis = [
-    { nivel: "Confirmado", cor: "#1E8E5F", bg: "#E6F7EF" },
-    { nivel: "Pendente", cor: "#9A6300", bg: "#FFF3DC" },
-    { nivel: "Indeciso", cor: "#B3402C", bg: "#FBE9E7" },
-  ].map(n => ({ ...n, total: eleitores.filter(e => e.status === n.nivel).length }));
-  const totalEleitores = eleitores.length || 1;
-
-  return (
-    <div className="flex flex-col gap-6">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard label="Eleitores cadastrados" value={eleitores.length} sub="+3 esta semana" tone="blue" />
-        <StatCard label="Apoiadores" value={apoiadoresCount} sub="confirmados" tone="teal" />
-        <StatCard label="Lideranças ativas" value={liderancas.length} tone="green" />
-        <StatCard label="Demandas abertas" value={abertas} sub={`${concluidas} concluídas`} tone="amber" />
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
-        <StatCard label="Votos esperados" value={votosEsperados.toLocaleString("pt-BR")} tone="teal" />
-        <StatCard label="Total gasto" value={fmt(totalGasto)} tone="amber" />
-        <StatCard label="Material restante" value={materialRestante.toLocaleString("pt-BR")} tone="green" />
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        <div className="cc-card p-5 lg:col-span-2">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="cc-display font-semibold text-sm">Cadastros e visitas na semana</h3>
-            <TrendingUp size={16} style={{ color: "var(--blue-600)" }} />
-          </div>
-          <ResponsiveContainer width="100%" height={220}>
-            <AreaChart data={chartData}>
-              <defs>
-                <linearGradient id="gCad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#2E86D8" stopOpacity={0.35} />
-                  <stop offset="100%" stopColor="#2E86D8" stopOpacity={0} />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E3E9F1" />
-              <XAxis dataKey="dia" tick={{ fontSize: 12, fill: "#5B6B7C" }} axisLine={false} tickLine={false} />
-              <YAxis tick={{ fontSize: 12, fill: "#5B6B7C" }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Area type="monotone" dataKey="cadastros" stroke="#2E86D8" fill="url(#gCad)" strokeWidth={2} />
-              <Area type="monotone" dataKey="visitas" stroke="#38C6C8" fillOpacity={0} strokeWidth={2} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-
-        <div className="cc-card p-5">
-          <h3 className="cc-display font-semibold text-sm mb-4">Apoiadores por bairro</h3>
-          <ResponsiveContainer width="100%" height={220}>
-            <BarChart data={bairroData} layout="vertical" margin={{ left: 10 }}>
-              <XAxis type="number" hide />
-              <YAxis dataKey="bairro" type="category" width={90} tick={{ fontSize: 11, fill: "#5B6B7C" }} axisLine={false} tickLine={false} />
-              <Tooltip />
-              <Bar dataKey="apoiadores" fill="#1B5FC4" radius={[0, 6, 6, 0]} barSize={14} />
-            </BarChart>
-          </ResponsiveContainer>
-        </div>
-      </div>
-
-      <div className="cc-card p-5">
-        <h3 className="cc-display font-semibold text-sm mb-4">Nível de votação dos eleitores</h3>
-        <div className="flex flex-col gap-4">
-          {niveis.map(n => {
-            const pct = Math.round((n.total / totalEleitores) * 100);
-            return (
-              <div key={n.nivel} className="flex items-center gap-3">
-                <span className="text-xs font-medium w-24 flex-shrink-0" style={{ color: "var(--ink-900)" }}>{n.nivel}</span>
-                <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
-                  <div className="h-3 rounded-full transition-all" style={{ width: `${pct}%`, background: n.cor }} />
-                </div>
-                <span className="text-xs w-20 text-right cc-display font-bold" style={{ color: n.cor }}>{n.total} <span className="font-normal" style={{ color: "var(--ink-500)" }}>({pct}%)</span></span>
-              </div>
-            );
-          })}
-        </div>
-        <div className="flex gap-3 mt-4 pt-4 border-t" style={{ borderColor: "var(--border)" }}>
-          {niveis.map(n => (
-            <div key={n.nivel} className="flex-1 rounded-lg px-3 py-2 text-center" style={{ background: n.bg }}>
-              <p className="cc-display font-bold text-lg" style={{ color: n.cor }}>{n.total}</p>
-              <p className="text-[11px] font-medium" style={{ color: n.cor }}>{n.nivel}</p>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      <div className="cc-card p-5">
-        <div className="flex items-center gap-2 mb-4">
-          <div className="cc-pulse w-2 h-2 rounded-full" style={{ background: "var(--teal-400)" }} />
-          <h3 className="cc-display font-semibold text-sm">Compromissos de hoje</h3>
-        </div>
-        <div className="flex flex-col divide-y" style={{ borderColor: "var(--border)" }}>
-          {agenda.filter(a => a.data === "2026-08-08").map(a => (
-            <div key={a.id} className="flex items-center justify-between py-3">
-              <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                  <Clock size={14} />
-                </div>
-                <div>
-                  <p className="text-sm font-medium">{a.titulo}</p>
-                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{a.local} • {a.responsavel}</p>
-                </div>
-              </div>
-              <span className="text-sm font-semibold cc-display">{a.hora}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
 
 function EleitoresView({ items, setItems, liderancas, table }) {
   const [query, setQuery] = useState("");
@@ -1212,8 +1101,11 @@ function FormTarefa({ data, onSave, statuses }) {
   );
 }
 
-function RelatoriosView({ eleitores, metas, setMetas, metasKV }) {
+function RelatoriosView({ eleitores, metas, setMetas, metasKV, candidatos, candidatosKV }) {
   const [editingMeta, setEditingMeta] = useState(null);
+  const [editingCandidato, setEditingCandidato] = useState(null);
+
+  const nomeNosso = (cargo) => candidatos[cargo] || "Nosso candidato";
 
   const linhas = CARGOS.map(cargo => {
     const nosso = eleitores.filter(e => e.intencoes?.[cargo] === "Nosso candidato").length;
@@ -1229,64 +1121,86 @@ function RelatoriosView({ eleitores, metas, setMetas, metasKV }) {
     setEditingMeta(null);
   }
 
+  function saveCandidato(cargo, nome) {
+    candidatosKV.setValue(cargo, nome.trim() || "Nosso candidato");
+    setEditingCandidato(null);
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <div className="cc-card p-4 flex items-start gap-2" style={{ background: "#EAF1FE" }}>
-        <BarChart3 size={16} style={{ color: "var(--blue-600)" }} className="mt-0.5 flex-shrink-0" />
+        <Vote size={16} style={{ color: "var(--blue-600)" }} className="mt-0.5 flex-shrink-0" />
         <p className="text-xs" style={{ color: "var(--navy-900)" }}>
-          Relatório de votos por cargo — meta definida pela campanha × intenção de voto declarada pelos {eleitores.length} eleitores/apoiadores cadastrados. Total geral, sem quebra por cidade/bairro.
+          Relatório de intenção de voto — {eleitores.length} eleitores cadastrados. Toque no nome do candidato ou na meta para editar.
         </p>
       </div>
 
-      <div className="cc-card overflow-x-auto cc-scroll">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left" style={{ color: "var(--ink-500)" }}>
-              <th className="px-4 py-3 font-medium">Cargo</th>
-              <th className="px-4 py-3 font-medium">Meta de votos</th>
-              <th className="px-4 py-3 font-medium">Intenção declarada</th>
-              <th className="px-4 py-3 font-medium">% da meta</th>
-              <th className="px-4 py-3 font-medium">Indecisos</th>
-              <th className="px-4 py-3 font-medium">Outro candidato</th>
-            </tr>
-          </thead>
-          <tbody>
-            {linhas.map(l => (
-              <tr key={l.cargo} className="border-t" style={{ borderColor: "var(--border)" }}>
-                <td className="px-4 py-3 font-semibold">{l.cargo}</td>
-                <td className="px-4 py-3">
-                  {editingMeta === l.cargo ? (
-                    <input
-                      autoFocus type="number" defaultValue={l.meta}
-                      className="w-24 border rounded-lg px-2 py-1 text-sm" style={inputStyle}
-                      onBlur={e => saveMeta(l.cargo, e.target.value)}
-                      onKeyDown={e => { if (e.key === "Enter") saveMeta(l.cargo, e.target.value); }}
-                    />
-                  ) : (
-                    <button onClick={() => setEditingMeta(l.cargo)} className="cc-display font-semibold flex items-center gap-1.5 hover:underline" style={{ color: "var(--ink-900)" }}>
-                      {l.meta.toLocaleString("pt-BR")} <Pencil size={11} style={{ color: "var(--ink-300)" }} />
-                    </button>
-                  )}
-                </td>
-                <td className="px-4 py-3 cc-display font-bold" style={{ color: "var(--blue-600)" }}>{l.nosso.toLocaleString("pt-BR")}</td>
-                <td className="px-4 py-3">
-                  <div className="flex items-center gap-2">
-                    <div className="w-20 h-2 rounded-full" style={{ background: "var(--border)" }}>
-                      <div className="h-2 rounded-full" style={{ width: `${l.pct}%`, background: l.pct >= 100 ? "var(--green-500)" : "var(--blue-600)" }} />
-                    </div>
-                    <span className="text-xs font-medium">{l.pct}%</span>
-                  </div>
-                </td>
-                <td className="px-4 py-3" style={{ color: "var(--amber-500)" }}>{l.indeciso}</td>
-                <td className="px-4 py-3" style={{ color: "var(--ink-500)" }}>{l.outro}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+      {CARGOS.map(cargo => {
+        const l = linhas.find(x => x.cargo === cargo);
+        const nome = nomeNosso(cargo);
+        return (
+          <div key={cargo} className="cc-card p-4 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <h3 className="cc-display font-semibold text-sm">{cargo}</h3>
+              <div className="flex items-center gap-1">
+                <span className="text-[11px]" style={{ color: "var(--ink-500)" }}>Meta:</span>
+                {editingMeta === cargo ? (
+                  <input autoFocus type="number" defaultValue={l.meta}
+                    className="w-20 border rounded-lg px-2 py-1 text-sm" style={inputStyle}
+                    onBlur={e => saveMeta(cargo, e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") saveMeta(cargo, e.target.value); }} />
+                ) : (
+                  <button onClick={() => setEditingMeta(cargo)} className="cc-display font-semibold text-sm flex items-center gap-1 hover:underline">
+                    {l.meta.toLocaleString("pt-BR")} <Pencil size={10} style={{ color: "var(--ink-300)" }} />
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              {editingCandidato === cargo ? (
+                <input autoFocus defaultValue={nome}
+                  className="flex-1 border rounded-lg px-2 py-1 text-sm" style={inputStyle}
+                  placeholder="Nome do candidato"
+                  onBlur={e => saveCandidato(cargo, e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") saveCandidato(cargo, e.target.value); }} />
+              ) : (
+                <button onClick={() => setEditingCandidato(cargo)}
+                  className="flex items-center gap-1.5 text-sm font-medium hover:underline" style={{ color: "var(--blue-600)" }}>
+                  <Pencil size={11} /> {nome}
+                </button>
+              )}
+            </div>
+
+            <div className="grid grid-cols-3 gap-2">
+              <div className="rounded-xl px-3 py-3 text-center" style={{ background: "#E6F7EF" }}>
+                <p className="cc-display font-bold text-xl" style={{ color: "#1E8E5F" }}>{l.nosso}</p>
+                <p className="text-[11px] font-medium" style={{ color: "#1E8E5F" }}>A favor</p>
+              </div>
+              <div className="rounded-xl px-3 py-3 text-center" style={{ background: "#FFF3DC" }}>
+                <p className="cc-display font-bold text-xl" style={{ color: "#9A6300" }}>{l.indeciso}</p>
+                <p className="text-[11px] font-medium" style={{ color: "#9A6300" }}>Indeciso</p>
+              </div>
+              <div className="rounded-xl px-3 py-3 text-center" style={{ background: "#FBE9E7" }}>
+                <p className="cc-display font-bold text-xl" style={{ color: "#B3402C" }}>{l.outro}</p>
+                <p className="text-[11px] font-medium" style={{ color: "#B3402C" }}>Outro</p>
+              </div>
+            </div>
+
+            {l.meta > 0 && (
+              <div className="flex items-center gap-2">
+                <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
+                  <div className="h-3 rounded-full transition-all" style={{ width: `${l.pct}%`, background: l.pct >= 100 ? "var(--green-500)" : "var(--blue-600)" }} />
+                </div>
+                <span className="text-xs font-semibold cc-display w-12 text-right">{l.pct}%</span>
+              </div>
+            )}
+          </div>
+        );
+      })}
 
       <div className="cc-card p-5">
-        <h3 className="cc-display font-semibold text-sm mb-4">Meta × intenção declarada por cargo</h3>
+        <h3 className="cc-display font-semibold text-sm mb-4">Meta × intenção declarada</h3>
         <ResponsiveContainer width="100%" height={240}>
           <BarChart data={linhas} margin={{ left: -10 }}>
             <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#E3E9F1" />
@@ -1513,8 +1427,38 @@ function EmBreveView({ label }) {
 // ---------------------------------------------------------------------------
 // App shell
 // ---------------------------------------------------------------------------
+function MoreDrawer({ open, onClose, onNavigate, currentView }) {
+  if (!open) return null;
+  return (
+    <div className="fixed inset-0 z-50" onClick={onClose}>
+      <div className="absolute inset-0" style={{ background: "rgba(10,25,41,0.45)" }} />
+      <div className="absolute bottom-0 left-0 right-0 cc-fade-in rounded-t-2xl overflow-hidden" style={{ background: "var(--surface)" }} onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <h3 className="cc-display font-semibold text-base">Mais opções</h3>
+          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100"><X size={18} /></button>
+        </div>
+        <div className="grid grid-cols-4 gap-1 px-4 pb-6 pt-2">
+          {MORE_ITEMS.filter(m => m.active).map(m => {
+            const Icon = m.icon;
+            const active = currentView === m.key;
+            return (
+              <button key={m.key} onClick={() => { onNavigate(m.key); onClose(); }}
+                className="flex flex-col items-center gap-1.5 py-3 rounded-xl"
+                style={{ background: active ? "#EAF1FE" : "transparent", color: active ? "var(--blue-600)" : "var(--ink-500)" }}>
+                <Icon size={22} />
+                <span className="text-[11px] font-medium">{m.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function App() {
-  const [view, setView] = useState("dashboard");
+  const [view, setView] = useState("eleitores");
+  const [moreOpen, setMoreOpen] = useState(false);
   const eleitoresTable = useSupabaseTable("eleitores", []);
   const liderancasTable = useSupabaseTable("liderancas", []);
   const demandasTable = useSupabaseTable("demandas", []);
@@ -1525,6 +1469,7 @@ export default function App() {
   const eventosTable = useSupabaseTable("eventos", []);
   const tarefasTable = useSupabaseTable("tarefas", []);
   const metasVotosKV = useSupabaseKV("metas_votos", {});
+  const candidatosKV = useSupabaseKV("candidatos", {});
   const pesquisasTable = useSupabaseTable("pesquisas", []);
   const documentosTable = useSupabaseTable("documentos", []);
 
@@ -1547,6 +1492,7 @@ export default function App() {
   const tarefas = tarefasTable.items;
   const setTarefas = tarefasTable.setItems;
   const [metasVotos, setMetasVotos] = [metasVotosKV.data, metasVotosKV.setData];
+  const candidatos = candidatosKV.data;
   const pesquisas = pesquisasTable.items;
   const setPesquisas = pesquisasTable.setItems;
   const documentos = documentosTable.items;
@@ -1555,69 +1501,64 @@ export default function App() {
   const current = MENU.find(m => m.key === view);
 
   return (
-    <div className="cc-root min-h-screen flex flex-col" style={{ paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+    <div className="cc-root min-h-screen flex flex-col" style={{ paddingBottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}>
       <style>{THEME}</style>
 
-      {/* Topbar */}
+      {/* Topbar compacta */}
       <header className="cc-sash text-white relative z-20">
-        <div className="px-4 sm:px-6 pt-5 pb-3 flex items-center justify-between relative z-10">
+        <div className="px-4 sm:px-6 py-3 flex items-center justify-between relative z-10">
           <div className="flex items-baseline gap-2">
-            <p className="cc-display font-bold text-lg leading-tight">CONecta</p>
-            <p className="cc-display font-bold text-lg leading-tight" style={{ color: "var(--teal-400)" }}>Campanha</p>
+            <p className="cc-display font-bold text-base leading-tight">CONecta</p>
+            <p className="cc-display font-bold text-base leading-tight" style={{ color: "var(--teal-400)" }}>Campanha</p>
           </div>
-          <button className="p-2 rounded-full hover:bg-white/10 relative">
-            <Bell size={18} />
-            <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full" style={{ background: "var(--red-500)" }} />
-          </button>
+          <div className="flex items-center gap-1">
+            <span className="text-xs opacity-70">{current?.label}</span>
+          </div>
         </div>
-
-        {/* Tabs — sempre visíveis, rolagem horizontal */}
-        <nav className="flex gap-1 overflow-x-auto cc-scroll px-4 sm:px-6 pb-3 relative z-10">
-          {MENU.map(m => {
-            const Icon = m.icon;
-            const activeView = view === m.key;
-            return (
-              <button
-                key={m.key}
-                onClick={() => { if (m.active) setView(m.key); }}
-                className={`cc-navlink flex-shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap ${m.active ? "" : "opacity-40 cursor-not-allowed"}`}
-                style={{ background: activeView ? "rgba(255,255,255,0.16)" : "transparent" }}
-              >
-                <Icon size={14} />
-                {m.label}
-              </button>
-            );
-          })}
-        </nav>
       </header>
 
       {/* Main */}
-      <div className="flex-1 flex flex-col min-w-0">
-        <div className="cc-card border-x-0 border-t-0 rounded-none px-4 sm:px-6 py-3 flex items-center justify-between" style={{ background: "var(--surface)" }}>
-          <div>
-            <h1 className="cc-display font-bold text-lg">{current?.label}</h1>
-            <p className="text-xs" style={{ color: "var(--ink-500)" }}>Campanha 2026 • {CIDADE_REDUTO}</p>
-          </div>
-        </div>
+      <main className="flex-1 p-4 sm:p-6 cc-fade-in">
+        {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
+        {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
+        {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
+        {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
+        {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
+        {view === "material" && <MaterialView items={material} setItems={setMaterial} table={materialTable} />}
+        {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} table={visitasTable} />}
+        {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
+        {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
+        {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} candidatos={candidatos} candidatosKV={candidatosKV} />}
+        {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} />}
+        {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
+        {current && !current.active && <EmBreveView label={current.label} />}
+      </main>
 
-        <main className="flex-1 p-4 sm:p-6 cc-fade-in">
-          {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} />}
-          {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
-          {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
-          {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
-          {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
-          {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
-          {view === "material" && <MaterialView items={material} setItems={setMaterial} table={materialTable} />}
-          {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} table={visitasTable} />}
-          {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
-          {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
-          {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} />}
-          {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} />}
-          {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
-          {current && !current.active && <EmBreveView label={current.label} />}
-        </main>
-      </div>
+      {/* Bottom Nav */}
+      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "var(--surface)", borderColor: "var(--border)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
+        {BOTTOM_TABS.map(tab => {
+          const Icon = tab.icon;
+          const active = view === tab.key;
+          return (
+            <button key={tab.key} onClick={() => setView(tab.key)}
+              className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
+              style={{ color: active ? "var(--blue-600)" : "var(--ink-300)" }}>
+              <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
+              <span className="text-[10px] font-semibold">{tab.label}</span>
+              {active && <span className="w-5 h-0.5 rounded-full mt-0.5" style={{ background: "var(--blue-600)" }} />}
+            </button>
+          );
+        })}
+        <button onClick={() => setMoreOpen(true)}
+          className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
+          style={{ color: MORE_ITEMS.some(m => m.key === view) ? "var(--blue-600)" : "var(--ink-300)" }}>
+          <Settings size={22} strokeWidth={1.8} />
+          <span className="text-[10px] font-semibold">Mais</span>
+          {MORE_ITEMS.some(m => m.key === view) && <span className="w-5 h-0.5 rounded-full mt-0.5" style={{ background: "var(--blue-600)" }} />}
+        </button>
+      </nav>
 
+      <MoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} onNavigate={setView} currentView={view} />
       <InstallPrompt />
     </div>
   );
