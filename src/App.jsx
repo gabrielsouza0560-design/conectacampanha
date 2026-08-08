@@ -1514,18 +1514,18 @@ function EmBreveView({ label }) {
 // ---------------------------------------------------------------------------
 export default function App() {
   const [view, setView] = useState("dashboard");
-  const eleitoresTable = useSupabaseTable("eleitores", seedEleitores);
-  const liderancasTable = useSupabaseTable("liderancas", seedLiderancas);
-  const demandasTable = useSupabaseTable("demandas", seedDemandas);
-  const agendaTable = useSupabaseTable("agenda", seedAgenda);
-  const gastosTable = useSupabaseTable("gastos", seedGastos);
-  const materialTable = useSupabaseTable("material", seedMaterial);
-  const visitasTable = useSupabaseTable("visitas", seedVisitas);
-  const eventosTable = useSupabaseTable("eventos", seedEventos);
-  const tarefasTable = useSupabaseTable("tarefas", seedTarefas);
-  const metasVotosKV = useSupabaseKV("metas_votos", seedMetasVotos);
-  const pesquisasTable = useSupabaseTable("pesquisas", seedPesquisas);
-  const documentosTable = useSupabaseTable("documentos", seedDocumentos);
+  const eleitoresTable = useSupabaseTable("eleitores", []);
+  const liderancasTable = useSupabaseTable("liderancas", []);
+  const demandasTable = useSupabaseTable("demandas", []);
+  const agendaTable = useSupabaseTable("agenda", []);
+  const gastosTable = useSupabaseTable("gastos", []);
+  const materialTable = useSupabaseTable("material", []);
+  const visitasTable = useSupabaseTable("visitas", []);
+  const eventosTable = useSupabaseTable("eventos", []);
+  const tarefasTable = useSupabaseTable("tarefas", []);
+  const metasVotosKV = useSupabaseKV("metas_votos", {});
+  const pesquisasTable = useSupabaseTable("pesquisas", []);
+  const documentosTable = useSupabaseTable("documentos", []);
 
   const eleitores = eleitoresTable.items;
   const setEleitores = eleitoresTable.setItems;
@@ -1595,7 +1595,7 @@ export default function App() {
         <div className="cc-card border-x-0 border-t-0 rounded-none px-4 sm:px-6 py-3 flex items-center justify-between" style={{ background: "var(--surface)" }}>
           <div>
             <h1 className="cc-display font-bold text-lg">{current?.label}</h1>
-            <p className="text-xs" style={{ color: "var(--ink-500)" }}>Campanha 2026 • {CIDADE_REDUTO} • dados de demonstração</p>
+            <p className="text-xs" style={{ color: "var(--ink-500)" }}>Campanha 2026 • {CIDADE_REDUTO}</p>
           </div>
         </div>
 
