@@ -7,7 +7,8 @@ import {
   BarChart3, MessageCircle, CheckSquare, FileText, Printer,
   Bell, Settings, Search, Plus, X, Pencil, Trash2, Phone,
   ChevronRight, Clock, TrendingUp, Activity,
-  Wallet, Package, Vote, ExternalLink
+  Wallet, Package, Vote, ExternalLink,
+  Send, Image, Video, Copy, Share2
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -183,12 +184,13 @@ const bairroData = BAIRROS.map((b, i) => ({ bairro: b, apoiadores: [128, 40, 96,
 
 const BOTTOM_TABS = [
   { key: "eleitores", label: "Eleitores", icon: Users },
-  { key: "demandas", label: "Demandas", icon: ClipboardList },
+  { key: "mensagens", label: "Mensagens", icon: Send },
   { key: "agenda", label: "Agenda", icon: CalendarIcon },
   { key: "relatorios", label: "Votos", icon: Vote },
 ];
 
 const MORE_ITEMS = [
+  { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
   { key: "liderancas", label: "Lideranças", icon: Crown, active: true },
   { key: "gastos", label: "Gastos", icon: Wallet, active: true },
   { key: "material", label: "Material", icon: Package, active: true },
@@ -198,7 +200,6 @@ const MORE_ITEMS = [
   { key: "pesquisas", label: "Pesquisas", icon: BarChart3, active: true },
   { key: "documentos", label: "Documentos", icon: FileText, active: true },
   { key: "mapa", label: "Mapa Eleitoral", icon: Map, active: false },
-  { key: "comunicacao", label: "Comunicação", icon: MessageCircle, active: false },
 ];
 
 const MENU = [
@@ -1412,6 +1413,199 @@ function FormDocumento({ data, onSave }) {
   );
 }
 
+function MensagensView({ eleitores }) {
+  const [mensagem, setMensagem] = useState("");
+  const [midia, setMidia] = useState(null);
+  const [midiaPreview, setMidiaPreview] = useState(null);
+  const [filtro, setFiltro] = useState("Todos");
+  const [enviados, setEnviados] = useState({});
+  const [bairroFiltro, setBairroFiltro] = useState("Todos");
+
+  const destinatarios = useMemo(() => eleitores.filter(e => {
+    if (filtro !== "Todos" && e.status !== filtro) return false;
+    if (bairroFiltro !== "Todos" && e.bairro !== bairroFiltro) return false;
+    return e.telefone;
+  }), [eleitores, filtro, bairroFiltro]);
+
+  function handleMidia(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setMidia(file);
+    setMidiaPreview(URL.createObjectURL(file));
+  }
+
+  function removeMidia() {
+    setMidia(null);
+    if (midiaPreview) URL.revokeObjectURL(midiaPreview);
+    setMidiaPreview(null);
+  }
+
+  function personalizar(texto, eleitor) {
+    return texto
+      .replace(/\{nome\}/gi, eleitor.nome || "")
+      .replace(/\{bairro\}/gi, eleitor.bairro || "")
+      .replace(/\{lideranca\}/gi, eleitor.lideranca || "");
+  }
+
+  function limparTelefone(tel) {
+    const nums = (tel || "").replace(/\D/g, "");
+    if (nums.startsWith("55")) return nums;
+    return "55" + nums;
+  }
+
+  async function enviarWhatsApp(eleitor) {
+    const texto = personalizar(mensagem, eleitor);
+    const tel = limparTelefone(eleitor.telefone);
+
+    if (midia && navigator.share) {
+      try {
+        await navigator.share({
+          text: texto,
+          files: [midia],
+        });
+        setEnviados(prev => ({ ...prev, [eleitor.id]: true }));
+        return;
+      } catch (_) {}
+    }
+
+    const url = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
+    window.open(url, "_blank");
+    setEnviados(prev => ({ ...prev, [eleitor.id]: true }));
+  }
+
+  async function enviarTodos() {
+    for (const el of destinatarios) {
+      if (!enviados[el.id]) {
+        await enviarWhatsApp(el);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+  }
+
+  function copiarMensagem(eleitor) {
+    const texto = personalizar(mensagem, eleitor);
+    navigator.clipboard?.writeText(texto);
+  }
+
+  const enviadosCount = destinatarios.filter(e => enviados[e.id]).length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="cc-card p-4 flex items-start gap-2" style={{ background: "#EAF1FE" }}>
+        <Send size={16} style={{ color: "var(--blue-600)" }} className="mt-0.5 flex-shrink-0" />
+        <p className="text-xs" style={{ color: "var(--navy-900)" }}>
+          Mensagem personalizada via WhatsApp. Use <strong>{"{nome}"}</strong>, <strong>{"{bairro}"}</strong> e <strong>{"{lideranca}"}</strong> para personalizar. Anexe foto ou vídeo para enviar junto.
+        </p>
+      </div>
+
+      <div className="cc-card p-4 flex flex-col gap-3">
+        <h3 className="cc-display font-semibold text-sm">Compor mensagem</h3>
+        <textarea
+          value={mensagem}
+          onChange={e => setMensagem(e.target.value)}
+          placeholder={"Olá {nome}! Aqui é da campanha em {bairro}. Contamos com seu apoio..."}
+          className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 min-h-[100px] resize-y"
+          style={{ borderColor: "var(--border)" }}
+        />
+
+        <div className="flex gap-2">
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+            <Image size={14} /> Foto
+            <input type="file" accept="image/*" className="hidden" onChange={handleMidia} />
+          </label>
+          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+            <Video size={14} /> Vídeo
+            <input type="file" accept="video/*" className="hidden" onChange={handleMidia} />
+          </label>
+        </div>
+
+        {midiaPreview && (
+          <div className="relative inline-block">
+            {midia?.type?.startsWith("video") ? (
+              <video src={midiaPreview} className="w-full max-w-xs rounded-lg" controls style={{ maxHeight: 200 }} />
+            ) : (
+              <img src={midiaPreview} alt="Preview" className="w-full max-w-xs rounded-lg object-cover" style={{ maxHeight: 200 }} />
+            )}
+            <button onClick={removeMidia} className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs" style={{ background: "rgba(0,0,0,0.6)" }}>
+              <X size={14} />
+            </button>
+          </div>
+        )}
+      </div>
+
+      <div className="cc-card p-4 flex flex-col gap-3">
+        <h3 className="cc-display font-semibold text-sm">Filtrar destinatários</h3>
+        <div className="flex gap-2 flex-wrap">
+          {["Todos", "Confirmado", "Pendente", "Indeciso"].map(s => (
+            <button key={s} onClick={() => setFiltro(s)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{ background: filtro === s ? "var(--blue-600)" : "var(--border)", color: filtro === s ? "#fff" : "var(--ink-500)" }}>
+              {s}
+            </button>
+          ))}
+        </div>
+        <div className="flex gap-2 flex-wrap">
+          {["Todos", ...BAIRROS].map(b => (
+            <button key={b} onClick={() => setBairroFiltro(b)}
+              className="px-3 py-1.5 rounded-full text-xs font-medium"
+              style={{ background: bairroFiltro === b ? "var(--navy-900)" : "var(--border)", color: bairroFiltro === b ? "#fff" : "var(--ink-500)" }}>
+              {b}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs" style={{ color: "var(--ink-500)" }}>
+          {destinatarios.length} destinatário{destinatarios.length !== 1 ? "s" : ""} • {enviadosCount} enviado{enviadosCount !== 1 ? "s" : ""}
+        </p>
+      </div>
+
+      {mensagem.trim() && destinatarios.length > 0 && (
+        <button onClick={enviarTodos}
+          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-white"
+          style={{ background: "var(--green-500)" }}>
+          <Send size={16} /> Enviar para {destinatarios.length} via WhatsApp
+        </button>
+      )}
+
+      <div className="flex flex-col gap-2">
+        {destinatarios.map(el => {
+          const preview = personalizar(mensagem || "Escreva a mensagem acima...", el);
+          const sent = enviados[el.id];
+          return (
+            <div key={el.id} className="cc-card p-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+                    {el.nome?.[0] || "?"}
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">{el.nome}</p>
+                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{el.telefone} • {el.bairro}</p>
+                  </div>
+                </div>
+                {sent && <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "#E6F7EF", color: "#1E8E5F" }}>Enviado</span>}
+              </div>
+              <p className="text-xs px-2 py-1.5 rounded-lg" style={{ background: "var(--paper)", color: "var(--ink-500)" }}>{preview}</p>
+              <div className="flex gap-2">
+                <button onClick={() => enviarWhatsApp(el)}
+                  className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold text-white"
+                  style={{ background: "#25D366" }}>
+                  <Send size={13} /> WhatsApp
+                </button>
+                <button onClick={() => copiarMensagem(el)}
+                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium"
+                  style={{ background: "var(--border)", color: "var(--ink-500)" }}>
+                  <Copy size={13} /> Copiar
+                </button>
+              </div>
+            </div>
+          );
+        })}
+        {destinatarios.length === 0 && <EmptyState text="Nenhum eleitor com telefone encontrado para os filtros selecionados" />}
+      </div>
+    </div>
+  );
+}
+
 function EmBreveView({ label }) {
   return (
     <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
@@ -1520,6 +1714,7 @@ export default function App() {
       {/* Main */}
       <main className="flex-1 p-4 sm:p-6 cc-fade-in">
         {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
+        {view === "mensagens" && <MensagensView eleitores={eleitores} />}
         {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
         {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
         {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
