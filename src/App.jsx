@@ -65,7 +65,7 @@ const THEME = `
 // ---------------------------------------------------------------------------
 const BAIRROS = ["Centro", "Jardim das Flores", "Vila Nova", "Bela Vista", "São José", "Industrial"];
 const CIDADE_REDUTO = "Ivatuba";
-const CARGOS = ["Presidente", "Governador", "Senador", "Deputado Federal", "Deputado Estadual"];
+const CARGOS = ["Deputado Federal", "Deputado Estadual"];
 const INTENCOES = ["Nosso candidato", "Outro candidato", "Indeciso"];
 
 const seedMetasVotos = {
@@ -77,7 +77,7 @@ const seedMetasVotos = {
 };
 
 function intencoesPadrao() {
-  return { "Presidente": "Indeciso", "Governador": "Indeciso", "Senador": "Indeciso", "Deputado Federal": "Indeciso", "Deputado Estadual": "Indeciso" };
+  return { "Deputado Federal": "Indeciso", "Deputado Estadual": "Indeciso" };
 }
 
 const seedEleitores = [
