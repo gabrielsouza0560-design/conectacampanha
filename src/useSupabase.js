@@ -4,21 +4,25 @@ import { supabase } from "./supabaseClient";
 const toSnake = (s) => s.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
 const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
 
-function mapKeys(obj, fn) {
-  if (Array.isArray(obj)) return obj.map((v) => mapKeys(v, fn));
+const trimTime = (v) =>
+  typeof v === "string" && /^\d{2}:\d{2}:\d{2}$/.test(v) ? v.slice(0, 5) : v;
+
+function mapKeys(obj, fn, fixValues) {
+  if (Array.isArray(obj)) return obj.map((v) => mapKeys(v, fn, fixValues));
   if (obj && typeof obj === "object" && !(obj instanceof Date)) {
     return Object.fromEntries(
       Object.entries(obj).map(([k, v]) => {
         const skip = k === "intencoes" || k === "opcoes";
-        return [fn(k), skip ? v : mapKeys(v, fn)];
+        const mapped = skip ? v : mapKeys(v, fn, fixValues);
+        return [fn(k), fixValues ? fixValues(mapped) : mapped];
       })
     );
   }
-  return obj;
+  return fixValues ? fixValues(obj) : obj;
 }
 
 const toDb = (row) => mapKeys(row, toSnake);
-const fromDb = (row) => mapKeys(row, toCamel);
+const fromDb = (row) => mapKeys(row, toCamel, trimTime);
 
 export function useSupabaseTable(table, fallback, orderCol = "id") {
   const [items, setItems] = useState(fallback);
