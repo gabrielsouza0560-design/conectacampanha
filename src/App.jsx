@@ -67,6 +67,7 @@ const BAIRROS = ["Centro", "Jardim das Flores", "Vila Nova", "Bela Vista", "São
 const CIDADE_REDUTO = "Ivatuba";
 const CARGOS = ["Deputado Federal", "Deputado Estadual"];
 const INTENCOES = ["Nosso candidato", "Outro candidato", "Indeciso"];
+const CATEGORIAS = ["Amigos", "Prefeitura", "Igreja", "Carretinha de Natal", "Comerciantes", "Barracas", "Visitas"];
 
 const seedMetasVotos = {
   "Presidente": 5000,
@@ -183,13 +184,14 @@ const chartData = [
 const bairroData = BAIRROS.map((b, i) => ({ bairro: b, apoiadores: [128, 40, 96, 62, 54, 54][i] }));
 
 const BOTTOM_TABS = [
+  { key: "dashboard", label: "Início", icon: LayoutDashboard },
   { key: "eleitores", label: "Eleitores", icon: Users },
   { key: "mensagens", label: "Mensagens", icon: Send },
-  { key: "agenda", label: "Agenda", icon: CalendarIcon },
   { key: "relatorios", label: "Votos", icon: Vote },
 ];
 
 const MORE_ITEMS = [
+  { key: "agenda", label: "Agenda", icon: CalendarIcon, active: true },
   { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
   { key: "liderancas", label: "Lideranças", icon: Crown, active: true },
   { key: "gastos", label: "Gastos", icon: Wallet, active: true },
@@ -281,6 +283,93 @@ function EmptyState({ text }) {
 // Views
 // ---------------------------------------------------------------------------
 
+function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, material, onNavigate }) {
+  const apoiadoresCount = eleitores.filter(e => e.status === "Confirmado").length;
+  const abertas = demandas.filter(d => d.status !== "Resolvida" && d.status !== "Cancelada").length;
+  const totalGasto = gastos.reduce((s, g) => s + g.valor, 0);
+  const fmt = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
+
+  const categoriaData = CATEGORIAS.map(cat => ({
+    categoria: cat,
+    total: eleitores.filter(e => e.categoria === cat).length,
+  }));
+  const semCategoria = eleitores.filter(e => !e.categoria).length;
+
+  const cores = ["#1B5FC4", "#38C6C8", "#F0A202", "#2AA876", "#E4572E", "#9A6300", "#5B6B7C"];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Eleitores" value={eleitores.length} tone="blue" />
+        <StatCard label="Apoiadores" value={apoiadoresCount} sub="confirmados" tone="teal" />
+        <StatCard label="Demandas abertas" value={abertas} tone="amber" />
+        <StatCard label="Total gasto" value={fmt(totalGasto)} tone="green" />
+      </div>
+
+      <div className="cc-card p-4">
+        <h3 className="cc-display font-semibold text-sm mb-3">Apoiadores por categoria</h3>
+        <div className="flex flex-col gap-2">
+          {categoriaData.map((c, i) => {
+            const pct = eleitores.length ? Math.round((c.total / eleitores.length) * 100) : 0;
+            return (
+              <div key={c.categoria} className="flex items-center gap-3">
+                <span className="text-xs font-medium w-28 flex-shrink-0 truncate">{c.categoria}</span>
+                <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
+                  <div className="h-3 rounded-full transition-all" style={{ width: `${pct}%`, background: cores[i % cores.length] }} />
+                </div>
+                <span className="text-xs font-bold cc-display w-8 text-right">{c.total}</span>
+              </div>
+            );
+          })}
+          {semCategoria > 0 && (
+            <div className="flex items-center gap-3">
+              <span className="text-xs font-medium w-28 flex-shrink-0 truncate" style={{ color: "var(--ink-300)" }}>Sem categoria</span>
+              <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
+                <div className="h-3 rounded-full" style={{ width: `${Math.round((semCategoria / (eleitores.length || 1)) * 100)}%`, background: "var(--ink-300)" }} />
+              </div>
+              <span className="text-xs font-bold cc-display w-8 text-right" style={{ color: "var(--ink-300)" }}>{semCategoria}</span>
+            </div>
+          )}
+        </div>
+        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
+          {categoriaData.map((c, i) => (
+            <div key={c.categoria} className="rounded-lg px-3 py-2 text-center" style={{ background: cores[i % cores.length] + "18" }}>
+              <p className="cc-display font-bold text-lg" style={{ color: cores[i % cores.length] }}>{c.total}</p>
+              <p className="text-[10px] font-medium" style={{ color: cores[i % cores.length] }}>{c.categoria}</p>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="cc-card p-4">
+        <h3 className="cc-display font-semibold text-sm mb-3">Acesso rápido</h3>
+        <div className="grid grid-cols-4 gap-2">
+          {[
+            { key: "eleitores", label: "Eleitores", icon: Users, cor: "#1B5FC4" },
+            { key: "mensagens", label: "Mensagens", icon: Send, cor: "#25D366" },
+            { key: "relatorios", label: "Votos", icon: Vote, cor: "#38C6C8" },
+            { key: "agenda", label: "Agenda", icon: CalendarIcon, cor: "#F0A202" },
+            { key: "demandas", label: "Demandas", icon: ClipboardList, cor: "#E4572E" },
+            { key: "liderancas", label: "Lideranças", icon: Crown, cor: "#9A6300" },
+            { key: "gastos", label: "Gastos", icon: Wallet, cor: "#2AA876" },
+            { key: "tarefas", label: "Tarefas", icon: CheckSquare, cor: "#5B6B7C" },
+          ].map(item => {
+            const Icon = item.icon;
+            return (
+              <button key={item.key} onClick={() => onNavigate(item.key)}
+                className="flex flex-col items-center gap-1.5 py-3 rounded-xl"
+                style={{ background: item.cor + "14" }}>
+                <Icon size={22} style={{ color: item.cor }} />
+                <span className="text-[10px] font-semibold" style={{ color: item.cor }}>{item.label}</span>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function EleitoresView({ items, setItems, liderancas, table }) {
   const [query, setQuery] = useState("");
   const [bairroFiltro, setBairroFiltro] = useState("Todos");
@@ -291,7 +380,7 @@ function EleitoresView({ items, setItems, liderancas, table }) {
     e.nome.toLowerCase().includes(query.toLowerCase())
   ), [items, query, bairroFiltro]);
 
-  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", tags: "", intencoes: intencoesPadrao() } }); }
+  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao() } }); }
   function openEdit(item) { setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } }); }
 
   function save(form) {
@@ -404,6 +493,12 @@ function FormEleitor({ data, liderancas, onSave }) {
       <Field label="Bairro">
         <select className={inputCls} style={inputStyle} value={form.bairro} onChange={e => setForm({ ...form, bairro: e.target.value })}>
           {BAIRROS.map(b => <option key={b}>{b}</option>)}
+        </select>
+      </Field>
+      <Field label="Categoria">
+        <select className={inputCls} style={inputStyle} value={form.categoria || ""} onChange={e => setForm({ ...form, categoria: e.target.value })}>
+          <option value="">Sem categoria</option>
+          {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
         </select>
       </Field>
       <Field label="Nível de votação">
@@ -1651,7 +1746,7 @@ function MoreDrawer({ open, onClose, onNavigate, currentView }) {
 }
 
 export default function App() {
-  const [view, setView] = useState("eleitores");
+  const [view, setView] = useState("dashboard");
   const [moreOpen, setMoreOpen] = useState(false);
   const eleitoresTable = useSupabaseTable("eleitores", []);
   const liderancasTable = useSupabaseTable("liderancas", []);
@@ -1713,6 +1808,7 @@ export default function App() {
 
       {/* Main */}
       <main className="flex-1 p-4 sm:p-6 cc-fade-in">
+        {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} onNavigate={setView} />}
         {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
         {view === "mensagens" && <MensagensView eleitores={eleitores} />}
         {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
