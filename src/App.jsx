@@ -8,7 +8,8 @@ import {
   Bell, Settings, Search, Plus, X, Pencil, Trash2, Phone,
   ChevronRight, Clock, TrendingUp, Activity,
   Wallet, Package, Vote, ExternalLink,
-  Send, Image, Video, Copy, Share2
+  Send, Image, Video, Copy, Share2,
+  Home, Instagram, UsersRound, ThumbsUp, ThumbsDown, Minus
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -191,6 +192,9 @@ const BOTTOM_TABS = [
 ];
 
 const MORE_ITEMS = [
+  { key: "whatsgrupos", label: "Grupos WhatsApp", icon: UsersRound, active: true },
+  { key: "instagram", label: "Instagram", icon: Instagram, active: true },
+  { key: "visitascasa", label: "Visita Casa", icon: Home, active: true },
   { key: "agenda", label: "Agenda", icon: CalendarIcon, active: true },
   { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
   { key: "liderancas", label: "Lideranças", icon: Crown, active: true },
@@ -201,7 +205,6 @@ const MORE_ITEMS = [
   { key: "tarefas", label: "Tarefas", icon: CheckSquare, active: true },
   { key: "pesquisas", label: "Pesquisas", icon: BarChart3, active: true },
   { key: "documentos", label: "Documentos", icon: FileText, active: true },
-  { key: "mapa", label: "Mapa Eleitoral", icon: Map, active: false },
 ];
 
 const MENU = [
@@ -1701,6 +1704,277 @@ function MensagensView({ eleitores }) {
   );
 }
 
+function WhatsGruposView({ items, setItems, table }) {
+  const [modal, setModal] = useState(null);
+  const statusTone = { "Ativo": "cc-badge-resolvida", "Inativo": "cc-badge-cancelada", "Novo": "cc-badge-nova" };
+
+  function openNew() { setModal({ mode: "new", data: { nome: "", link: "", membros: "", admin: "", bairro: "", status: "Ativo", observacoes: "" } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: item }); }
+  function save(form) {
+    const payload = { ...form, membros: Number(form.membros) || 0 };
+    if (modal.mode === "new") table.insert(payload);
+    else table.update(form.id, payload);
+    setModal(null);
+  }
+  function remove(id) { table.remove(id); }
+
+  const totalMembros = items.reduce((s, g) => s + (Number(g.membros) || 0), 0);
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-2 gap-3">
+        <StatCard label="Grupos" value={items.length} tone="teal" />
+        <StatCard label="Total membros" value={totalMembros} tone="blue" />
+      </div>
+      <div className="flex justify-end">
+        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "#25D366" }}>
+          <Plus size={16} /> Novo grupo
+        </button>
+      </div>
+      <div className="flex flex-col gap-3">
+        {items.map(g => (
+          <div key={g.id} className="cc-card p-4 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: "#E6F7EF", color: "#25D366" }}>
+                  <UsersRound size={18} />
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{g.nome}</p>
+                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{g.membros || 0} membros • {g.bairro || "Sem bairro"}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className={`text-xs px-2 py-1 rounded-full ${statusTone[g.status] || "cc-badge-nova"}`}>{g.status}</span>
+                <button onClick={() => openEdit(g)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
+                <button onClick={() => remove(g.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+            {g.admin && <p className="text-xs" style={{ color: "var(--ink-500)" }}>Admin: {g.admin}</p>}
+            {g.link && (
+              <a href={g.link} target="_blank" rel="noopener noreferrer" className="text-xs flex items-center gap-1 font-medium" style={{ color: "#25D366" }}>
+                <ExternalLink size={12} /> Abrir grupo
+              </a>
+            )}
+            {g.observacoes && <p className="text-xs pt-1 border-t" style={{ borderColor: "var(--border)", color: "var(--ink-500)" }}>{g.observacoes}</p>}
+          </div>
+        ))}
+        {items.length === 0 && <EmptyState text="Nenhum grupo cadastrado." />}
+      </div>
+      {modal && (
+        <Modal title={modal.mode === "new" ? "Novo grupo" : "Editar grupo"} onClose={() => setModal(null)}>
+          <form onSubmit={e => { e.preventDefault(); save(modal.data); }}>
+            <Field label="Nome do grupo"><input required className={inputCls} style={inputStyle} value={modal.data.nome} onChange={e => setModal({ ...modal, data: { ...modal.data, nome: e.target.value } })} /></Field>
+            <Field label="Link do grupo"><input className={inputCls} style={inputStyle} value={modal.data.link} onChange={e => setModal({ ...modal, data: { ...modal.data, link: e.target.value } })} placeholder="https://chat.whatsapp.com/..." /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Membros"><input type="number" className={inputCls} style={inputStyle} value={modal.data.membros} onChange={e => setModal({ ...modal, data: { ...modal.data, membros: e.target.value } })} /></Field>
+              <Field label="Status">
+                <select className={inputCls} style={inputStyle} value={modal.data.status} onChange={e => setModal({ ...modal, data: { ...modal.data, status: e.target.value } })}>
+                  <option>Ativo</option><option>Inativo</option><option>Novo</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Admin"><input className={inputCls} style={inputStyle} value={modal.data.admin} onChange={e => setModal({ ...modal, data: { ...modal.data, admin: e.target.value } })} /></Field>
+            <Field label="Bairro">
+              <select className={inputCls} style={inputStyle} value={modal.data.bairro} onChange={e => setModal({ ...modal, data: { ...modal.data, bairro: e.target.value } })}>
+                <option value="">Selecionar</option>
+                {BAIRROS.map(b => <option key={b}>{b}</option>)}
+              </select>
+            </Field>
+            <Field label="Observações"><input className={inputCls} style={inputStyle} value={modal.data.observacoes} onChange={e => setModal({ ...modal, data: { ...modal.data, observacoes: e.target.value } })} /></Field>
+            <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "#25D366" }}>Salvar</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function InstagramView({ items, setItems, table }) {
+  const [modal, setModal] = useState(null);
+  const reacaoTone = { "Apoiou": "cc-badge-resolvida", "Reagiu": "cc-badge-andamento", "Ignorou": "cc-badge-analise", "Negativo": "cc-badge-cancelada" };
+
+  function openNew() { setModal({ mode: "new", data: { perfil: "", nome: "", seguidores: "", tipo: "Seguidor", reacao: "Reagiu", ultimaInteracao: "", observacoes: "" } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: item }); }
+  function save(form) {
+    const payload = { ...form, seguidores: Number(form.seguidores) || 0 };
+    if (modal.mode === "new") table.insert(payload);
+    else table.update(form.id, payload);
+    setModal(null);
+  }
+  function remove(id) { table.remove(id); }
+
+  const apoiaram = items.filter(i => i.reacao === "Apoiou").length;
+  const reagiram = items.filter(i => i.reacao === "Reagiu").length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-3">
+        <StatCard label="Perfis" value={items.length} tone="blue" />
+        <StatCard label="Apoiaram" value={apoiaram} tone="green" />
+        <StatCard label="Reagiram" value={reagiram} tone="teal" />
+      </div>
+      <div className="flex justify-end">
+        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888)" }}>
+          <Plus size={16} /> Novo perfil
+        </button>
+      </div>
+      <div className="flex flex-col gap-3">
+        {items.map(p => (
+          <div key={p.id} className="cc-card p-4 flex flex-col gap-2">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-bold" style={{ background: "linear-gradient(45deg, #f09433, #dc2743, #bc1888)" }}>
+                  {p.nome?.[0] || "@"}
+                </div>
+                <div>
+                  <p className="font-semibold text-sm">{p.nome || p.perfil}</p>
+                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>@{p.perfil} • {p.tipo}</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className={`text-xs px-2 py-1 rounded-full ${reacaoTone[p.reacao] || "cc-badge-nova"}`}>{p.reacao}</span>
+                <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
+                <button onClick={() => remove(p.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+            {p.observacoes && <p className="text-xs" style={{ color: "var(--ink-500)" }}>{p.observacoes}</p>}
+          </div>
+        ))}
+        {items.length === 0 && <EmptyState text="Nenhum perfil cadastrado." />}
+      </div>
+      {modal && (
+        <Modal title={modal.mode === "new" ? "Novo perfil" : "Editar perfil"} onClose={() => setModal(null)}>
+          <form onSubmit={e => { e.preventDefault(); save(modal.data); }}>
+            <Field label="@ do perfil"><input required className={inputCls} style={inputStyle} value={modal.data.perfil} onChange={e => setModal({ ...modal, data: { ...modal.data, perfil: e.target.value } })} placeholder="usuario123" /></Field>
+            <Field label="Nome"><input className={inputCls} style={inputStyle} value={modal.data.nome} onChange={e => setModal({ ...modal, data: { ...modal.data, nome: e.target.value } })} /></Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Seguidores"><input type="number" className={inputCls} style={inputStyle} value={modal.data.seguidores} onChange={e => setModal({ ...modal, data: { ...modal.data, seguidores: e.target.value } })} /></Field>
+              <Field label="Tipo">
+                <select className={inputCls} style={inputStyle} value={modal.data.tipo} onChange={e => setModal({ ...modal, data: { ...modal.data, tipo: e.target.value } })}>
+                  <option>Seguidor</option><option>Influenciador</option><option>Página</option><option>Comercial</option>
+                </select>
+              </Field>
+            </div>
+            <Field label="Reação">
+              <select className={inputCls} style={inputStyle} value={modal.data.reacao} onChange={e => setModal({ ...modal, data: { ...modal.data, reacao: e.target.value } })}>
+                <option>Apoiou</option><option>Reagiu</option><option>Ignorou</option><option>Negativo</option>
+              </select>
+            </Field>
+            <Field label="Última interação"><input type="date" className={inputCls} style={inputStyle} value={modal.data.ultimaInteracao} onChange={e => setModal({ ...modal, data: { ...modal.data, ultimaInteracao: e.target.value } })} /></Field>
+            <Field label="Observações"><input className={inputCls} style={inputStyle} value={modal.data.observacoes} onChange={e => setModal({ ...modal, data: { ...modal.data, observacoes: e.target.value } })} /></Field>
+            <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "linear-gradient(45deg, #f09433, #dc2743, #bc1888)" }}>Salvar</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function VisitaCasaView({ items, setItems, table }) {
+  const [modal, setModal] = useState(null);
+  const reacaoIcon = { "Apoia": ThumbsUp, "Indeciso": Minus, "Não apoia": ThumbsDown };
+  const reacaoTone = { "Apoia": "cc-badge-resolvida", "Indeciso": "cc-badge-analise", "Não apoia": "cc-badge-cancelada" };
+
+  function openNew() { setModal({ mode: "new", data: { morador: "", endereco: "", bairro: BAIRROS[0], data: "", hora: "", visitante: "", reacao: "Indeciso", observacoes: "", retornar: false } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: item }); }
+  function save(form) {
+    if (modal.mode === "new") table.insert(form);
+    else table.update(form.id, form);
+    setModal(null);
+  }
+  function remove(id) { table.remove(id); }
+
+  const apoiam = items.filter(v => v.reacao === "Apoia").length;
+  const indecisos = items.filter(v => v.reacao === "Indeciso").length;
+  const contra = items.filter(v => v.reacao === "Não apoia").length;
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="grid grid-cols-3 gap-3">
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl" style={{ color: "#1E8E5F" }}>{apoiam}</p>
+          <div className="flex items-center justify-center gap-1"><ThumbsUp size={12} style={{ color: "#1E8E5F" }} /><span className="text-[11px] font-medium" style={{ color: "#1E8E5F" }}>Apoia</span></div>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl" style={{ color: "#9A6300" }}>{indecisos}</p>
+          <div className="flex items-center justify-center gap-1"><Minus size={12} style={{ color: "#9A6300" }} /><span className="text-[11px] font-medium" style={{ color: "#9A6300" }}>Indeciso</span></div>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl" style={{ color: "#B3402C" }}>{contra}</p>
+          <div className="flex items-center justify-center gap-1"><ThumbsDown size={12} style={{ color: "#B3402C" }} /><span className="text-[11px] font-medium" style={{ color: "#B3402C" }}>Não apoia</span></div>
+        </div>
+      </div>
+      <div className="flex justify-end">
+        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
+          <Plus size={16} /> Nova visita
+        </button>
+      </div>
+      <div className="flex flex-col gap-3">
+        {items.map(v => {
+          const ReacaoIcon = reacaoIcon[v.reacao] || Minus;
+          return (
+            <div key={v.id} className="cc-card p-4 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center" style={{ background: v.reacao === "Apoia" ? "#E6F7EF" : v.reacao === "Não apoia" ? "#FBE9E7" : "#FFF3DC" }}>
+                    <ReacaoIcon size={18} style={{ color: v.reacao === "Apoia" ? "#1E8E5F" : v.reacao === "Não apoia" ? "#B3402C" : "#9A6300" }} />
+                  </div>
+                  <div>
+                    <p className="font-semibold text-sm">{v.morador}</p>
+                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{v.endereco} • {v.bairro}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <span className={`text-xs px-2 py-1 rounded-full ${reacaoTone[v.reacao] || "cc-badge-nova"}`}>{v.reacao}</span>
+                  <button onClick={() => openEdit(v)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
+                  <button onClick={() => remove(v.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: "var(--ink-500)" }}>
+                <span>{v.data} • {v.hora}</span>
+                <span>Visitante: {v.visitante}</span>
+              </div>
+              {v.retornar && <span className="text-xs px-2 py-0.5 rounded-full w-fit font-medium" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>Retornar</span>}
+              {v.observacoes && <p className="text-xs pt-1 border-t" style={{ borderColor: "var(--border)", color: "var(--ink-500)" }}>{v.observacoes}</p>}
+            </div>
+          );
+        })}
+        {items.length === 0 && <EmptyState text="Nenhuma visita de casa registrada." />}
+      </div>
+      {modal && (
+        <Modal title={modal.mode === "new" ? "Nova visita de casa" : "Editar visita"} onClose={() => setModal(null)}>
+          <form onSubmit={e => { e.preventDefault(); save(modal.data); }}>
+            <Field label="Nome do morador"><input required className={inputCls} style={inputStyle} value={modal.data.morador} onChange={e => setModal({ ...modal, data: { ...modal.data, morador: e.target.value } })} /></Field>
+            <Field label="Endereço"><input required className={inputCls} style={inputStyle} value={modal.data.endereco} onChange={e => setModal({ ...modal, data: { ...modal.data, endereco: e.target.value } })} /></Field>
+            <Field label="Bairro">
+              <select className={inputCls} style={inputStyle} value={modal.data.bairro} onChange={e => setModal({ ...modal, data: { ...modal.data, bairro: e.target.value } })}>
+                {BAIRROS.map(b => <option key={b}>{b}</option>)}
+              </select>
+            </Field>
+            <div className="grid grid-cols-2 gap-3">
+              <Field label="Data"><input type="date" required className={inputCls} style={inputStyle} value={modal.data.data} onChange={e => setModal({ ...modal, data: { ...modal.data, data: e.target.value } })} /></Field>
+              <Field label="Hora"><input type="time" className={inputCls} style={inputStyle} value={modal.data.hora} onChange={e => setModal({ ...modal, data: { ...modal.data, hora: e.target.value } })} /></Field>
+            </div>
+            <Field label="Visitante"><input className={inputCls} style={inputStyle} value={modal.data.visitante} onChange={e => setModal({ ...modal, data: { ...modal.data, visitante: e.target.value } })} /></Field>
+            <Field label="Reação">
+              <select className={inputCls} style={inputStyle} value={modal.data.reacao} onChange={e => setModal({ ...modal, data: { ...modal.data, reacao: e.target.value } })}>
+                <option>Apoia</option><option>Indeciso</option><option>Não apoia</option>
+              </select>
+            </Field>
+            <label className="flex items-center gap-2 text-sm mb-3 cursor-pointer">
+              <input type="checkbox" checked={modal.data.retornar || false} onChange={e => setModal({ ...modal, data: { ...modal.data, retornar: e.target.checked } })} />
+              <span style={{ color: "var(--ink-500)" }}>Precisa retornar</span>
+            </label>
+            <Field label="Observações"><input className={inputCls} style={inputStyle} value={modal.data.observacoes} onChange={e => setModal({ ...modal, data: { ...modal.data, observacoes: e.target.value } })} /></Field>
+            <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
+          </form>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
 function EmBreveView({ label }) {
   return (
     <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
@@ -1761,6 +2035,9 @@ export default function App() {
   const candidatosKV = useSupabaseKV("candidatos", {});
   const pesquisasTable = useSupabaseTable("pesquisas", []);
   const documentosTable = useSupabaseTable("documentos", []);
+  const whatsGruposTable = useSupabaseTable("whats_grupos", []);
+  const instagramTable = useSupabaseTable("instagram", []);
+  const visitasCasaTable = useSupabaseTable("visitas_casa", []);
 
   const eleitores = eleitoresTable.items;
   const setEleitores = eleitoresTable.setItems;
@@ -1811,6 +2088,9 @@ export default function App() {
         {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} onNavigate={setView} />}
         {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
         {view === "mensagens" && <MensagensView eleitores={eleitores} />}
+        {view === "whatsgrupos" && <WhatsGruposView items={whatsGruposTable.items} setItems={whatsGruposTable.setItems} table={whatsGruposTable} />}
+        {view === "instagram" && <InstagramView items={instagramTable.items} setItems={instagramTable.setItems} table={instagramTable} />}
+        {view === "visitascasa" && <VisitaCasaView items={visitasCasaTable.items} setItems={visitasCasaTable.setItems} table={visitasCasaTable} />}
         {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
         {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
         {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
