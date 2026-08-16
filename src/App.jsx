@@ -66,7 +66,7 @@ const THEME = `
 // ---------------------------------------------------------------------------
 const BAIRROS = ["Centro", "Jardim das Flores", "Vila Nova", "Bela Vista", "São José", "Industrial"];
 const CIDADE_REDUTO = "Ivatuba";
-const CARGOS = ["Deputado Federal", "Deputado Estadual"];
+const CARGOS = ["Deputado Estadual", "Deputado Federal", "Senado", "Governador", "Presidente"];
 const INTENCOES = ["Nosso candidato", "Outro candidato", "Indeciso"];
 const CATEGORIAS = ["Amigos", "Prefeitura", "Igreja", "Carretinha de Natal", "Comerciantes", "Barracas", "Visitas"];
 
@@ -79,7 +79,7 @@ const seedMetasVotos = {
 };
 
 function intencoesPadrao() {
-  return { "Deputado Federal": "Indeciso", "Deputado Estadual": "Indeciso" };
+  return { "Deputado Estadual": "Indeciso", "Deputado Federal": "Indeciso", "Senado": "Indeciso", "Governador": "Indeciso", "Presidente": "Indeciso" };
 }
 
 const seedEleitores = [
@@ -373,33 +373,86 @@ function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, materi
   );
 }
 
-function EleitoresView({ items, setItems, liderancas, table }) {
+function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
   const [query, setQuery] = useState("");
   const [bairroFiltro, setBairroFiltro] = useState("Todos");
+  const [cargoTab, setCargoTab] = useState(cargoInicial || "Todos");
   const [modal, setModal] = useState(null);
 
-  const filtered = useMemo(() => items.filter(e =>
-    (bairroFiltro === "Todos" || e.bairro === bairroFiltro) &&
-    e.nome.toLowerCase().includes(query.toLowerCase())
-  ), [items, query, bairroFiltro]);
+  const filtered = useMemo(() => items.filter(e => {
+    if (bairroFiltro !== "Todos" && e.bairro !== bairroFiltro) return false;
+    if (query && !e.nome.toLowerCase().includes(query.toLowerCase())) return false;
+    return true;
+  }), [items, query, bairroFiltro]);
 
-  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao() } }); }
-  function openEdit(item) { setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } }); }
+  const intencaoTone = {
+    "Nosso candidato": { bg: "#E6F7EF", fg: "#1E8E5F" },
+    "Outro candidato": { bg: "#FBE9E7", fg: "#B3402C" },
+    "Indeciso": { bg: "#FFF3DC", fg: "#9A6300" },
+  };
+
+  function openNew() {
+    setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao(), duplicarTodos: true } });
+  }
+  function openEdit(item) {
+    setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } });
+  }
 
   function save(form) {
     const tagsArr = form.tags.split(",").map(t => t.trim()).filter(Boolean);
+    const { duplicarTodos, ...rest } = form;
+    if (duplicarTodos && cargoTab !== "Todos") {
+      const intencaoAtual = rest.intencoes[cargoTab] || "Indeciso";
+      const intencoes = {};
+      CARGOS.forEach(c => { intencoes[c] = intencaoAtual; });
+      rest.intencoes = intencoes;
+    }
     if (modal.mode === "new") {
-      table.insert({ ...form, tags: tagsArr, cadastro: new Date().toISOString().slice(0, 10) });
+      table.insert({ ...rest, tags: tagsArr, cadastro: new Date().toISOString().slice(0, 10) });
     } else {
-      table.update(form.id, { ...form, tags: tagsArr });
+      table.update(rest.id, { ...rest, tags: tagsArr });
     }
     setModal(null);
   }
   function remove(id) { table.remove(id); }
-  function changeNivel(id, status) { table.update(id, { status }); }
+  function changeIntencao(id, cargo, intencao) {
+    const eleitor = items.find(e => e.id === id);
+    if (!eleitor) return;
+    const intencoes = { ...intencoesPadrao(), ...(eleitor.intencoes || {}), [cargo]: intencao };
+    table.update(id, { intencoes });
+  }
 
   return (
     <div className="flex flex-col gap-4">
+      {/* Sub-abas por cargo */}
+      <div className="flex gap-1 overflow-x-auto cc-scroll pb-1">
+        {["Todos", ...CARGOS].map(tab => (
+          <button key={tab} onClick={() => setCargoTab(tab)}
+            className="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap"
+            style={{ background: cargoTab === tab ? "var(--blue-600)" : "var(--border)", color: cargoTab === tab ? "#fff" : "var(--ink-500)" }}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Contadores da aba atual */}
+      {cargoTab !== "Todos" && (
+        <div className="grid grid-cols-3 gap-2">
+          <div className="cc-card p-2 text-center">
+            <p className="cc-display font-bold text-lg" style={{ color: "#1E8E5F" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Nosso candidato").length}</p>
+            <p className="text-[10px] font-medium" style={{ color: "#1E8E5F" }}>Nosso</p>
+          </div>
+          <div className="cc-card p-2 text-center">
+            <p className="cc-display font-bold text-lg" style={{ color: "#9A6300" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Indeciso" || !e.intencoes?.[cargoTab]).length}</p>
+            <p className="text-[10px] font-medium" style={{ color: "#9A6300" }}>Indeciso</p>
+          </div>
+          <div className="cc-card p-2 text-center">
+            <p className="cc-display font-bold text-lg" style={{ color: "#B3402C" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Outro candidato").length}</p>
+            <p className="text-[10px] font-medium" style={{ color: "#B3402C" }}>Outro</p>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
         <div className="flex flex-1 gap-2">
           <div className="relative flex-1 max-w-xs">
@@ -418,67 +471,65 @@ function EleitoresView({ items, setItems, liderancas, table }) {
         </button>
       </div>
 
-      <div className="cc-card overflow-x-auto cc-scroll">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="text-left" style={{ color: "var(--ink-500)" }}>
-              <th className="px-4 py-3 font-medium">Nome</th>
-              <th className="px-4 py-3 font-medium">Telefone</th>
-              <th className="px-4 py-3 font-medium">Bairro</th>
-              <th className="px-4 py-3 font-medium">Liderança</th>
-              <th className="px-4 py-3 font-medium">Nível de votação</th>
-              <th className="px-4 py-3 font-medium"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map(e => {
-              const nivelTone = {
-                "Confirmado": { bg: "#E6F7EF", fg: "#1E8E5F" },
-                "Pendente": { bg: "#FFF3DC", fg: "#9A6300" },
-                "Indeciso": { bg: "#FBE9E7", fg: "#B3402C" },
-              }[e.status] || { bg: "#EAF1FE", fg: "var(--blue-600)" };
-              return (
-              <tr key={e.id} className="border-t" style={{ borderColor: "var(--border)" }}>
-                <td className="px-4 py-3 font-medium">{e.nome}</td>
-                <td className="px-4 py-3" style={{ color: "var(--ink-500)" }}>{e.telefone}</td>
-                <td className="px-4 py-3">{e.bairro}</td>
-                <td className="px-4 py-3">{e.lideranca}</td>
-                <td className="px-4 py-3">
-                  <select
-                    value={e.status}
-                    onChange={ev => changeNivel(e.id, ev.target.value)}
-                    className="text-xs font-medium rounded-full px-2 py-1 border-0 outline-none"
-                    style={{ background: nivelTone.bg, color: nivelTone.fg }}
-                  >
-                    <option>Confirmado</option>
-                    <option>Pendente</option>
-                    <option>Indeciso</option>
-                  </select>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-2 justify-end">
-                    <button onClick={() => openEdit(e)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                    <button onClick={() => remove(e.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+      <div className="flex flex-col gap-2">
+        {filtered.map(e => {
+          const intencao = cargoTab !== "Todos" ? (e.intencoes?.[cargoTab] || "Indeciso") : null;
+          const tone = intencao ? intencaoTone[intencao] || intencaoTone["Indeciso"] : null;
+          return (
+            <div key={e.id} className="cc-card p-3 flex flex-col gap-2">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+                    {e.nome?.[0] || "?"}
                   </div>
-                </td>
-              </tr>
-              );
-            })}
-          </tbody>
-        </table>
-        {filtered.length === 0 && <EmptyState text="Nenhum eleitor encontrado com esse filtro." />}
+                  <div>
+                    <p className="text-sm font-medium">{e.nome}</p>
+                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{e.telefone} • {e.bairro}{e.categoria ? ` • ${e.categoria}` : ""}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => openEdit(e)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
+                  <button onClick={() => remove(e.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                </div>
+              </div>
+              {cargoTab !== "Todos" ? (
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-medium" style={{ color: "var(--ink-500)" }}>{cargoTab}:</span>
+                  <select value={intencao} onChange={ev => changeIntencao(e.id, cargoTab, ev.target.value)}
+                    className="text-xs font-medium rounded-full px-2 py-1 border-0 outline-none"
+                    style={{ background: tone.bg, color: tone.fg }}>
+                    {INTENCOES.map(i => <option key={i}>{i}</option>)}
+                  </select>
+                </div>
+              ) : (
+                <div className="flex flex-wrap gap-1">
+                  {CARGOS.map(c => {
+                    const int = e.intencoes?.[c] || "Indeciso";
+                    const t = intencaoTone[int] || intencaoTone["Indeciso"];
+                    return (
+                      <span key={c} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: t.bg, color: t.fg }}>
+                        {c.replace("Deputado ", "Dep. ")}: {int === "Nosso candidato" ? "Nosso" : int === "Outro candidato" ? "Outro" : "Ind."}
+                      </span>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          );
+        })}
+        {filtered.length === 0 && <EmptyState text="Nenhum eleitor encontrado." />}
       </div>
 
       {modal && (
         <Modal title={modal.mode === "new" ? "Novo eleitor" : "Editar eleitor"} onClose={() => setModal(null)}>
-          <FormEleitor data={modal.data} liderancas={liderancas} onSave={save} />
+          <FormEleitor data={modal.data} liderancas={liderancas} onSave={save} cargoAtual={cargoTab} />
         </Modal>
       )}
     </div>
   );
 }
 
-function FormEleitor({ data, liderancas, onSave }) {
+function FormEleitor({ data, liderancas, onSave, cargoAtual }) {
   const [form, setForm] = useState(data);
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
@@ -511,6 +562,7 @@ function FormEleitor({ data, liderancas, onSave }) {
       </Field>
       <Field label="Liderança responsável">
         <select className={inputCls} style={inputStyle} value={form.lideranca} onChange={e => setForm({ ...form, lideranca: e.target.value })}>
+          <option value="">Selecionar</option>
           {liderancas.map(l => <option key={l.id}>{l.nome}</option>)}
         </select>
       </Field>
@@ -526,7 +578,7 @@ function FormEleitor({ data, liderancas, onSave }) {
               <select
                 className="text-xs border rounded-lg px-2 py-1.5"
                 style={inputStyle}
-                value={form.intencoes[cargo]}
+                value={form.intencoes?.[cargo] || "Indeciso"}
                 onChange={e => setForm({ ...form, intencoes: { ...form.intencoes, [cargo]: e.target.value } })}
               >
                 {INTENCOES.map(i => <option key={i}>{i}</option>)}
@@ -534,6 +586,12 @@ function FormEleitor({ data, liderancas, onSave }) {
             </div>
           ))}
         </div>
+        {form.duplicarTodos !== undefined && cargoAtual !== "Todos" && (
+          <label className="flex items-center gap-2 text-xs mt-3 cursor-pointer" style={{ color: "var(--blue-600)" }}>
+            <input type="checkbox" checked={form.duplicarTodos || false} onChange={e => setForm({ ...form, duplicarTodos: e.target.checked })} />
+            <span className="font-medium">Aplicar a mesma intenção para todos os cargos</span>
+          </label>
+        )}
       </div>
       <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
         Salvar
@@ -1315,39 +1373,75 @@ function RelatoriosView({ eleitores, metas, setMetas, metasKV, candidatos, candi
   );
 }
 
-function PesquisasView({ items, setItems, table }) {
+function PesquisasView({ items, setItems, table, eleitores }) {
   const [modal, setModal] = useState(null);
+  const [cargoTab, setCargoTab] = useState("Geral");
 
-  function openNew() { setModal({ mode: "new", data: { titulo: "", data: "", responsavel: "", opcoes: [{ texto: "", respostas: 0 }, { texto: "", respostas: 0 }] } }); }
+  function openNew() { setModal({ mode: "new", data: { titulo: "", data: "", responsavel: "", cargo: cargoTab === "Geral" ? "" : cargoTab, opcoes: [{ texto: "", respostas: 0 }, { texto: "", respostas: 0 }] } }); }
   function openEdit(item) { setModal({ mode: "edit", data: { ...item, opcoes: (item.opcoes || []).map(o => ({ ...o })) } }); }
   function save(form) {
     const opcoes = form.opcoes.filter(o => o.texto.trim());
     const payload = { ...form, opcoes };
-    if (modal.mode === "new") {
-      table.insert(payload);
-    } else {
-      table.update(form.id, payload);
-    }
+    if (modal.mode === "new") table.insert(payload);
+    else table.update(form.id, payload);
     setModal(null);
   }
   function remove(id) { table.remove(id); }
 
+  const filteredItems = cargoTab === "Geral"
+    ? items.filter(p => !p.cargo)
+    : items.filter(p => p.cargo === cargoTab);
+
   return (
     <div className="flex flex-col gap-4">
+      {/* Sub-abas: Geral + cada cargo */}
+      <div className="flex gap-1 overflow-x-auto cc-scroll pb-1">
+        {["Geral", ...CARGOS].map(tab => (
+          <button key={tab} onClick={() => setCargoTab(tab)}
+            className="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap"
+            style={{ background: cargoTab === tab ? "var(--blue-600)" : "var(--border)", color: cargoTab === tab ? "#fff" : "var(--ink-500)" }}>
+            {tab}
+          </button>
+        ))}
+      </div>
+
+      {/* Pesquisa eleitoral automática por cargo */}
+      {cargoTab !== "Geral" && eleitores && eleitores.length > 0 && (
+        <div className="cc-card p-4">
+          <h3 className="cc-display font-semibold text-sm mb-3">Intenção de voto — {cargoTab}</h3>
+          <div className="flex flex-col gap-2">
+            {INTENCOES.map(int => {
+              const count = eleitores.filter(e => e.intencoes?.[cargoTab] === int).length;
+              const pct = eleitores.length ? Math.round((count / eleitores.length) * 100) : 0;
+              const cor = int === "Nosso candidato" ? "#1E8E5F" : int === "Outro candidato" ? "#B3402C" : "#9A6300";
+              return (
+                <div key={int} className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-28 flex-shrink-0">{int}</span>
+                  <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
+                    <div className="h-3 rounded-full" style={{ width: `${pct}%`, background: cor }} />
+                  </div>
+                  <span className="text-xs font-bold cc-display w-16 text-right" style={{ color: cor }}>{count} ({pct}%)</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       <div className="flex justify-end">
         <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
           <Plus size={16} /> Nova pesquisa
         </button>
       </div>
       <div className="flex flex-col gap-4">
-        {items.map(p => {
+        {filteredItems.map(p => {
           const total = p.opcoes.reduce((s, o) => s + Number(o.respostas || 0), 0);
           return (
             <div key={p.id} className="cc-card p-4 flex flex-col gap-3">
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-semibold text-sm">{p.titulo}</p>
-                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{p.data} • {p.responsavel} • {total} respostas</p>
+                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{p.data} • {p.responsavel} • {total} respostas{p.cargo ? ` • ${p.cargo}` : ""}</p>
                 </div>
                 <div className="flex gap-1">
                   <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
@@ -1371,7 +1465,7 @@ function PesquisasView({ items, setItems, table }) {
             </div>
           );
         })}
-        {items.length === 0 && <EmptyState text="Nenhuma pesquisa registrada." />}
+        {filteredItems.length === 0 && <EmptyState text={cargoTab === "Geral" ? "Nenhuma pesquisa geral." : `Nenhuma pesquisa para ${cargoTab}.`} />}
       </div>
       {modal && (
         <Modal title={modal.mode === "new" ? "Nova pesquisa" : "Editar pesquisa"} onClose={() => setModal(null)}>
@@ -1399,6 +1493,12 @@ function FormPesquisa({ data, onSave }) {
         <Field label="Data"><input type="date" required className={inputCls} style={inputStyle} value={form.data} onChange={e => setForm({ ...form, data: e.target.value })} /></Field>
         <Field label="Responsável"><input className={inputCls} style={inputStyle} value={form.responsavel} onChange={e => setForm({ ...form, responsavel: e.target.value })} /></Field>
       </div>
+      <Field label="Cargo (opcional)">
+        <select className={inputCls} style={inputStyle} value={form.cargo || ""} onChange={e => setForm({ ...form, cargo: e.target.value })}>
+          <option value="">Geral</option>
+          {CARGOS.map(c => <option key={c}>{c}</option>)}
+        </select>
+      </Field>
       <span className="text-sm font-medium block mb-2" style={{ color: "var(--ink-500)" }}>Opções de resposta e contagem</span>
       <div className="flex flex-col gap-2 mb-2">
         {form.opcoes.map((o, idx) => (
@@ -2100,7 +2200,7 @@ export default function App() {
         {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
         {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
         {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} candidatos={candidatos} candidatosKV={candidatosKV} />}
-        {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} />}
+        {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} eleitores={eleitores} />}
         {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
         {current && !current.active && <EmBreveView label={current.label} />}
       </main>
