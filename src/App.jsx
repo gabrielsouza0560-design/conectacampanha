@@ -9,7 +9,8 @@ import {
   ChevronRight, Clock, TrendingUp, Activity,
   Wallet, Package, Vote, ExternalLink,
   Send, Image, Video, Copy, Share2,
-  Home, Instagram, UsersRound, ThumbsUp, ThumbsDown, Minus
+  Home, Instagram, UsersRound, ThumbsUp, ThumbsDown, Minus,
+  Download, QrCode, UserCheck, Shield, Eye, Target, MessageSquare
 } from "lucide-react";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
@@ -206,6 +207,10 @@ const MORE_ITEMS = [
   { key: "tarefas", label: "Tarefas", icon: CheckSquare, active: true },
   { key: "pesquisas", label: "Pesquisas", icon: BarChart3, active: true },
   { key: "documentos", label: "Documentos", icon: FileText, active: true },
+  { key: "cabos", label: "Cabos Eleitorais", icon: Target, active: true },
+  { key: "diad", label: "Dia D", icon: Shield, active: true },
+  { key: "historico", label: "Histórico Contato", icon: MessageSquare, active: true },
+  { key: "exportar", label: "Exportar", icon: Download, active: true },
 ];
 
 const MENU = [
@@ -2192,6 +2197,13 @@ function VotacaoPublicaView({ candidatosConfig, candidatosConfigKV, votosTable }
           <p className="text-xs" style={{ color: "var(--ink-500)" }}>Escolha seu candidato por número — voto anônimo</p>
         </div>
         <div className="flex gap-2">
+          <button onClick={() => {
+            const url = window.location.origin + window.location.pathname + "?votacao=1";
+            if (navigator.share) navigator.share({ title: "Votação Pública - Ivatuba", url });
+            else { navigator.clipboard.writeText(url); alert("Link copiado!"); }
+          }} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ background: "var(--border)" }}>
+            <Share2 size={13} />
+          </button>
           <button onClick={() => setVerResultados(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ background: "var(--border)" }}>
             Resultados ({todosVotos.length})
           </button>
@@ -2265,6 +2277,351 @@ function VotacaoPublicaView({ candidatosConfig, candidatosConfigKV, votosTable }
   );
 }
 
+// ---------------------------------------------------------------------------
+// Cabos Eleitorais
+// ---------------------------------------------------------------------------
+function CabosEleitoraisView({ items, setItems, table }) {
+  const [form, setForm] = useState(null);
+  const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  async function salvar() {
+    if (!form.nome) return;
+    if (form.id) { await table.update(form); setItems(prev => prev.map(i => i.id === form.id ? form : i)); }
+    else { const n = await table.insert({ ...form, id: undefined }); setItems(prev => [...prev, n || { ...form, id: Date.now() }]); }
+    setForm(null);
+  }
+  async function remover(id) { await table.remove(id); setItems(prev => prev.filter(i => i.id !== id)); }
+
+  const totalMeta = items.reduce((s, c) => s + (Number(c.meta) || 0), 0);
+  const totalContatos = items.reduce((s, c) => s + (Number(c.contatosRealizados) || 0), 0);
+
+  if (form) return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="cc-display font-semibold text-base">{form.id ? "Editar" : "Novo"} Cabo Eleitoral</h3>
+        <button onClick={() => setForm(null)} className="p-1"><X size={18} /></button>
+      </div>
+      <div className="cc-card p-4 flex flex-col gap-3">
+        <input placeholder="Nome *" className={inputCls} style={inputStyle} value={form.nome || ""} onChange={e => f("nome", e.target.value)} />
+        <input placeholder="Telefone" className={inputCls} style={inputStyle} value={form.telefone || ""} onChange={e => f("telefone", e.target.value)} />
+        <select className={inputCls} style={inputStyle} value={form.bairro || ""} onChange={e => f("bairro", e.target.value)}>
+          <option value="">Bairro</option>
+          {BAIRROS.map(b => <option key={b}>{b}</option>)}
+        </select>
+        <input placeholder="Meta de contatos" type="number" className={inputCls} style={inputStyle} value={form.meta || ""} onChange={e => f("meta", e.target.value)} />
+        <input placeholder="Contatos realizados" type="number" className={inputCls} style={inputStyle} value={form.contatosRealizados || ""} onChange={e => f("contatosRealizados", e.target.value)} />
+        <select className={inputCls} style={inputStyle} value={form.status || "Ativo"} onChange={e => f("status", e.target.value)}>
+          <option>Ativo</option><option>Inativo</option>
+        </select>
+        <textarea placeholder="Observações" className={inputCls} style={inputStyle} rows={2} value={form.observacoes || ""} onChange={e => f("observacoes", e.target.value)} />
+        <button onClick={salvar} className="w-full py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="cc-display font-semibold text-base">Cabos Eleitorais</h3>
+        <button onClick={() => setForm({ nome: "", telefone: "", bairro: "", meta: 50, contatosRealizados: 0, status: "Ativo", observacoes: "" })}
+          className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "var(--blue-600)" }}>
+          <Plus size={14} /> Novo
+        </button>
+      </div>
+      <div className="grid grid-cols-2 gap-3">
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl">{items.length}</p>
+          <p className="text-[10px] font-medium" style={{ color: "var(--ink-500)" }}>Cabos ativos</p>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl">{totalContatos}<span className="text-sm font-normal" style={{ color: "var(--ink-300)" }}>/{totalMeta}</span></p>
+          <p className="text-[10px] font-medium" style={{ color: "var(--ink-500)" }}>Contatos/Meta</p>
+        </div>
+      </div>
+      {items.map(c => {
+        const pct = c.meta ? Math.min(100, Math.round(((Number(c.contatosRealizados) || 0) / Number(c.meta)) * 100)) : 0;
+        return (
+          <div key={c.id} className="cc-card p-4 flex flex-col gap-2">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">{c.nome}</p>
+                <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{c.bairro} • {c.telefone}</p>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => setForm(c)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
+                <button onClick={() => remover(c.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1 h-2.5 rounded-full" style={{ background: "var(--border)" }}>
+                <div className="h-2.5 rounded-full" style={{ width: `${pct}%`, background: pct >= 80 ? "var(--green-500)" : pct >= 50 ? "var(--amber-500)" : "var(--blue-600)" }} />
+              </div>
+              <span className="text-xs font-bold cc-display w-20 text-right">{pct}% ({c.contatosRealizados || 0}/{c.meta || 0})</span>
+            </div>
+            <span className={`text-[10px] font-medium px-2 py-0.5 rounded-full w-fit ${c.status === "Ativo" ? "cc-badge-resolvida" : "cc-badge-cancelada"}`}>{c.status}</span>
+          </div>
+        );
+      })}
+      {items.length === 0 && <p className="text-sm text-center py-8" style={{ color: "var(--ink-300)" }}>Nenhum cabo eleitoral cadastrado</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Dia D - Painel da Eleição
+// ---------------------------------------------------------------------------
+function DiaDView({ eleitores, cabos, fiscaisTable }) {
+  const [form, setForm] = useState(null);
+  const fiscais = fiscaisTable.items || [];
+  const f = (k, v) => setForm(prev => ({ ...prev, [k]: v }));
+
+  async function salvar() {
+    if (!form.nome) return;
+    if (form.id) { await fiscaisTable.update(form); fiscaisTable.setItems(prev => prev.map(i => i.id === form.id ? form : i)); }
+    else { const n = await fiscaisTable.insert({ ...form, id: undefined }); fiscaisTable.setItems(prev => [...prev, n || { ...form, id: Date.now() }]); }
+    setForm(null);
+  }
+  async function remover(id) { await fiscaisTable.remove(id); fiscaisTable.setItems(prev => prev.filter(i => i.id !== id)); }
+  function marcarVotou(id) {
+    const f2 = fiscais.find(f3 => f3.id === id);
+    if (f2) { const upd = { ...f2, votou: !f2.votou }; fiscaisTable.update(upd); fiscaisTable.setItems(prev => prev.map(i => i.id === id ? upd : i)); }
+  }
+
+  const totalConfirmados = eleitores.filter(e => e.status === "Confirmado").length;
+  const totalVotaram = fiscais.filter(f2 => f2.tipo === "eleitor" && f2.votou).length;
+  const fiscaisSecao = fiscais.filter(f2 => f2.tipo === "fiscal");
+  const eleitoresDiaD = fiscais.filter(f2 => f2.tipo === "eleitor");
+
+  if (form) return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <h3 className="cc-display font-semibold text-base">{form.id ? "Editar" : "Novo"}</h3>
+        <button onClick={() => setForm(null)} className="p-1"><X size={18} /></button>
+      </div>
+      <div className="cc-card p-4 flex flex-col gap-3">
+        <input placeholder="Nome *" className={inputCls} style={inputStyle} value={form.nome || ""} onChange={e => f("nome", e.target.value)} />
+        <input placeholder="Telefone" className={inputCls} style={inputStyle} value={form.telefone || ""} onChange={e => f("telefone", e.target.value)} />
+        <select className={inputCls} style={inputStyle} value={form.tipo || "fiscal"} onChange={e => f("tipo", e.target.value)}>
+          <option value="fiscal">Fiscal de seção</option>
+          <option value="eleitor">Eleitor (acompanhar voto)</option>
+        </select>
+        <input placeholder="Seção eleitoral" className={inputCls} style={inputStyle} value={form.secao || ""} onChange={e => f("secao", e.target.value)} />
+        <input placeholder="Local de votação" className={inputCls} style={inputStyle} value={form.local || ""} onChange={e => f("local", e.target.value)} />
+        <textarea placeholder="Observações" className={inputCls} style={inputStyle} rows={2} value={form.observacoes || ""} onChange={e => f("observacoes", e.target.value)} />
+        <button onClick={salvar} className="w-full py-2.5 rounded-xl text-sm font-bold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
+      </div>
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="cc-display font-semibold text-base">Dia D — Eleição</h3>
+        <button onClick={() => setForm({ nome: "", telefone: "", tipo: "fiscal", secao: "", local: "", observacoes: "", votou: false })}
+          className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "var(--blue-600)" }}>
+          <Plus size={14} /> Novo
+        </button>
+      </div>
+
+      <div className="grid grid-cols-3 gap-3">
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl" style={{ color: "var(--blue-600)" }}>{fiscaisSecao.length}</p>
+          <p className="text-[10px] font-medium" style={{ color: "var(--ink-500)" }}>Fiscais</p>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl" style={{ color: "var(--green-500)" }}>{totalVotaram}</p>
+          <p className="text-[10px] font-medium" style={{ color: "var(--ink-500)" }}>Já votaram</p>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display font-bold text-xl">{eleitoresDiaD.length}</p>
+          <p className="text-[10px] font-medium" style={{ color: "var(--ink-500)" }}>Acompanhando</p>
+        </div>
+      </div>
+
+      {fiscaisSecao.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--ink-500)" }}><Shield size={12} /> Fiscais de seção</h4>
+          {fiscaisSecao.map(f2 => (
+            <div key={f2.id} className="cc-card p-3 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-semibold">{f2.nome}</p>
+                <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Seção {f2.secao} • {f2.local} • {f2.telefone}</p>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => setForm(f2)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
+                <button onClick={() => remover(f2.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {eleitoresDiaD.length > 0 && (
+        <div className="flex flex-col gap-2">
+          <h4 className="text-xs font-semibold flex items-center gap-1" style={{ color: "var(--ink-500)" }}><UserCheck size={12} /> Acompanhamento de eleitores</h4>
+          {eleitoresDiaD.map(f2 => (
+            <div key={f2.id} className="cc-card p-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <button onClick={() => marcarVotou(f2.id)}
+                  className="w-8 h-8 rounded-full flex items-center justify-center border-2"
+                  style={{ borderColor: f2.votou ? "var(--green-500)" : "var(--border)", background: f2.votou ? "#E6F7EF" : "transparent" }}>
+                  {f2.votou && <CheckSquare size={14} style={{ color: "var(--green-500)" }} />}
+                </button>
+                <div>
+                  <p className={`text-sm font-semibold ${f2.votou ? "line-through" : ""}`} style={f2.votou ? { color: "var(--ink-300)" } : {}}>{f2.nome}</p>
+                  <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Seção {f2.secao} • {f2.telefone}</p>
+                </div>
+              </div>
+              <div className="flex gap-1">
+                <button onClick={() => setForm(f2)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
+                <button onClick={() => remover(f2.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {fiscais.length === 0 && <p className="text-sm text-center py-8" style={{ color: "var(--ink-300)" }}>Cadastre fiscais e eleitores para acompanhar no dia da eleição</p>}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Histórico de Contato
+// ---------------------------------------------------------------------------
+function HistoricoContatoView({ eleitores, setEleitores, eleitoresTable, historicoTable }) {
+  const [selecionado, setSelecionado] = useState(null);
+  const [form, setForm] = useState(null);
+  const [busca, setBusca] = useState("");
+  const historico = historicoTable.items || [];
+
+  const filtrados = eleitores.filter(e => !busca || e.nome.toLowerCase().includes(busca.toLowerCase()));
+  const historicoEleitor = selecionado ? historico.filter(h => h.eleitorId === selecionado.id) : [];
+
+  async function salvarContato() {
+    if (!form.descricao) return;
+    const novo = { ...form, eleitorId: selecionado.id, id: undefined };
+    const n = await historicoTable.insert(novo);
+    historicoTable.setItems(prev => [...prev, n || { ...novo, id: Date.now() }]);
+    setForm(null);
+  }
+  async function removerContato(id) { await historicoTable.remove(id); historicoTable.setItems(prev => prev.filter(i => i.id !== id)); }
+
+  if (selecionado) return (
+    <div className="flex flex-col gap-3">
+      <div className="flex items-center justify-between">
+        <div>
+          <button onClick={() => setSelecionado(null)} className="text-xs font-medium mb-1" style={{ color: "var(--blue-600)" }}>← Voltar</button>
+          <h3 className="cc-display font-semibold text-base">{selecionado.nome}</h3>
+          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{selecionado.telefone} • {selecionado.bairro}</p>
+        </div>
+        <button onClick={() => setForm({ data: new Date().toISOString().slice(0, 10), tipo: "WhatsApp", descricao: "" })}
+          className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "var(--blue-600)" }}>
+          <Plus size={14} /> Contato
+        </button>
+      </div>
+
+      {form && (
+        <div className="cc-card p-4 flex flex-col gap-3">
+          <input type="date" className={inputCls} style={inputStyle} value={form.data || ""} onChange={e => setForm(prev => ({ ...prev, data: e.target.value }))} />
+          <select className={inputCls} style={inputStyle} value={form.tipo || ""} onChange={e => setForm(prev => ({ ...prev, tipo: e.target.value }))}>
+            <option>WhatsApp</option><option>Telefone</option><option>Presencial</option><option>Visita</option>
+          </select>
+          <textarea placeholder="O que foi conversado" className={inputCls} style={inputStyle} rows={3} value={form.descricao || ""} onChange={e => setForm(prev => ({ ...prev, descricao: e.target.value }))} />
+          <div className="flex gap-2">
+            <button onClick={() => setForm(null)} className="flex-1 py-2 rounded-xl text-sm font-semibold" style={{ background: "var(--border)" }}>Cancelar</button>
+            <button onClick={salvarContato} className="flex-1 py-2 rounded-xl text-sm font-bold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
+          </div>
+        </div>
+      )}
+
+      {historicoEleitor.sort((a, b) => (b.data || "").localeCompare(a.data || "")).map(h => (
+        <div key={h.id} className="cc-card p-3 flex items-start justify-between">
+          <div className="flex items-start gap-3">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center mt-0.5" style={{ background: "#EAF1FE" }}>
+              <MessageSquare size={14} style={{ color: "var(--blue-600)" }} />
+            </div>
+            <div>
+              <p className="text-xs font-semibold">{h.tipo} <span className="font-normal" style={{ color: "var(--ink-300)" }}>• {h.data}</span></p>
+              <p className="text-xs mt-1" style={{ color: "var(--ink-500)" }}>{h.descricao}</p>
+            </div>
+          </div>
+          <button onClick={() => removerContato(h.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+        </div>
+      ))}
+      {historicoEleitor.length === 0 && !form && <p className="text-sm text-center py-6" style={{ color: "var(--ink-300)" }}>Nenhum contato registrado</p>}
+    </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="cc-display font-semibold text-base">Histórico de Contato</h3>
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-300)" }} />
+        <input placeholder="Buscar eleitor..." className={inputCls} style={{ ...inputStyle, paddingLeft: "2.2rem" }} value={busca} onChange={e => setBusca(e.target.value)} />
+      </div>
+      {filtrados.slice(0, 30).map(e => {
+        const ultimo = historico.filter(h => h.eleitorId === e.id).sort((a, b) => (b.data || "").localeCompare(a.data || ""))[0];
+        return (
+          <button key={e.id} onClick={() => setSelecionado(e)} className="cc-card p-3 flex items-center justify-between text-left w-full">
+            <div>
+              <p className="text-sm font-semibold">{e.nome}</p>
+              <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{e.bairro} • {e.telefone}</p>
+              {ultimo && <p className="text-[10px] mt-1" style={{ color: "var(--blue-600)" }}>Último: {ultimo.tipo} em {ultimo.data}</p>}
+            </div>
+            <ChevronRight size={16} style={{ color: "var(--ink-300)" }} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Exportar Dados
+// ---------------------------------------------------------------------------
+function ExportarView({ eleitores, cabos, liderancas }) {
+  function exportCSV(data, filename, headers) {
+    const bom = "﻿";
+    const csv = bom + headers.join(";") + "\n" + data.map(row => headers.map(h => {
+      const val = row[h] ?? "";
+      return typeof val === "object" ? JSON.stringify(val) : String(val).replace(/;/g, ",");
+    }).join(";")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename; a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  const exports = [
+    { label: "Eleitores", desc: `${eleitores.length} registros`, icon: Users, action: () => exportCSV(eleitores, "eleitores_ivatuba.csv", ["nome", "telefone", "bairro", "categoria", "status", "lideranca", "tags", "cadastro"]) },
+    { label: "Cabos Eleitorais", desc: `${cabos.length} registros`, icon: Target, action: () => exportCSV(cabos, "cabos_eleitorais.csv", ["nome", "telefone", "bairro", "meta", "contatosRealizados", "status"]) },
+    { label: "Lideranças", desc: `${liderancas.length} registros`, icon: Crown, action: () => exportCSV(liderancas, "liderancas.csv", ["nome", "bairro", "telefone", "apoiadores"]) },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <h3 className="cc-display font-semibold text-base">Exportar Dados</h3>
+      <p className="text-xs" style={{ color: "var(--ink-500)" }}>Baixe os dados em formato CSV (abre no Excel)</p>
+      {exports.map(exp => {
+        const Icon = exp.icon;
+        return (
+          <button key={exp.label} onClick={exp.action} className="cc-card p-4 flex items-center gap-4 text-left w-full">
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center" style={{ background: "#EAF1FE" }}>
+              <Icon size={20} style={{ color: "var(--blue-600)" }} />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-semibold">{exp.label}</p>
+              <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{exp.desc}</p>
+            </div>
+            <Download size={18} style={{ color: "var(--blue-600)" }} />
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 function EmBreveView({ label }) {
   return (
     <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
@@ -2330,6 +2687,9 @@ export default function App() {
   const visitasCasaTable = useSupabaseTable("visitas_casa", []);
   const votosPublicosTable = useSupabaseTable("votos_publicos", []);
   const candidatosVotacaoKV = useSupabaseKV("candidatos_votacao", {});
+  const cabosTable = useSupabaseTable("cabos_eleitorais", []);
+  const fiscaisTable = useSupabaseTable("fiscais_diad", []);
+  const historicoTable = useSupabaseTable("historico_contato", []);
 
   const eleitores = eleitoresTable.items;
   const setEleitores = eleitoresTable.setItems;
@@ -2356,6 +2716,8 @@ export default function App() {
   const documentos = documentosTable.items;
   const setDocumentos = documentosTable.setItems;
   const candidatosVotacao = candidatosVotacaoKV.data;
+  const cabos = cabosTable.items;
+  const setCabos = cabosTable.setItems;
 
   const current = MENU.find(m => m.key === view);
 
@@ -2396,6 +2758,10 @@ export default function App() {
         {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} eleitores={eleitores} />}
         {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
         {view === "votacao" && <VotacaoPublicaView candidatosConfig={candidatosVotacao} candidatosConfigKV={candidatosVotacaoKV} votosTable={votosPublicosTable} />}
+        {view === "cabos" && <CabosEleitoraisView items={cabos} setItems={setCabos} table={cabosTable} />}
+        {view === "diad" && <DiaDView eleitores={eleitores} cabos={cabos} fiscaisTable={fiscaisTable} />}
+        {view === "historico" && <HistoricoContatoView eleitores={eleitores} setEleitores={setEleitores} eleitoresTable={eleitoresTable} historicoTable={historicoTable} />}
+        {view === "exportar" && <ExportarView eleitores={eleitores} cabos={cabos} liderancas={liderancas} />}
         {current && !current.active && <EmBreveView label={current.label} />}
       </main>
 
