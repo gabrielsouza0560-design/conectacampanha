@@ -192,6 +192,7 @@ const BOTTOM_TABS = [
 ];
 
 const MORE_ITEMS = [
+  { key: "votacao", label: "Votação Pública", icon: Vote, active: true },
   { key: "whatsgrupos", label: "Grupos WhatsApp", icon: UsersRound, active: true },
   { key: "instagram", label: "Instagram", icon: Instagram, active: true },
   { key: "visitascasa", label: "Visita Casa", icon: Home, active: true },
@@ -2075,6 +2076,195 @@ function VisitaCasaView({ items, setItems, table }) {
   );
 }
 
+function VotacaoPublicaView({ candidatosConfig, candidatosConfigKV, votosTable }) {
+  const [editMode, setEditMode] = useState(false);
+  const [votos, setVotos] = useState({});
+  const [votou, setVotou] = useState(() => localStorage.getItem("cc_votou") === "1");
+  const [verResultados, setVerResultados] = useState(false);
+
+  function getDeviceId() {
+    let id = localStorage.getItem("cc_device_id");
+    if (!id) {
+      id = crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2);
+      localStorage.setItem("cc_device_id", id);
+    }
+    return id;
+  }
+
+  const jaVotou = votou || localStorage.getItem("cc_votou") === "1";
+
+  const config = candidatosConfig || {};
+
+  function getCandidatos(cargo) {
+    return config[cargo] || [];
+  }
+
+  function addCandidato(cargo) {
+    const lista = [...getCandidatos(cargo), { numero: "", nome: "", partido: "" }];
+    candidatosConfigKV.setValue(cargo, lista);
+  }
+  function removeCandidato(cargo, idx) {
+    const lista = getCandidatos(cargo).filter((_, i) => i !== idx);
+    candidatosConfigKV.setValue(cargo, lista);
+  }
+  function updateCandidato(cargo, idx, field, value) {
+    const lista = getCandidatos(cargo).map((c, i) => i === idx ? { ...c, [field]: value } : c);
+    candidatosConfigKV.setValue(cargo, lista);
+  }
+
+  function selecionarVoto(cargo, numero) {
+    setVotos(prev => ({ ...prev, [cargo]: prev[cargo] === numero ? null : numero }));
+  }
+
+  async function confirmarVoto() {
+    const deviceId = getDeviceId();
+    const payload = { ...votos, dataVoto: new Date().toISOString(), deviceId };
+    await votosTable.insert(payload);
+    localStorage.setItem("cc_votou", "1");
+    setVotou(true);
+  }
+
+  const todosVotos = votosTable.items || [];
+
+  if (jaVotou) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="cc-card p-8 text-center flex flex-col items-center gap-3">
+          <div className="w-16 h-16 rounded-full flex items-center justify-center" style={{ background: "#E6F7EF" }}>
+            <ThumbsUp size={32} style={{ color: "#1E8E5F" }} />
+          </div>
+          <h3 className="cc-display font-bold text-lg">Voto registrado!</h3>
+          <p className="text-sm" style={{ color: "var(--ink-500)" }}>Obrigado por participar. Seu voto é anônimo e único por dispositivo.</p>
+          <button onClick={() => setVerResultados(true)} className="px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>Ver resultados</button>
+        </div>
+      </div>
+    );
+  }
+
+  if (verResultados) {
+    return (
+      <div className="flex flex-col gap-4">
+        <div className="flex items-center justify-between">
+          <h3 className="cc-display font-semibold text-base">Resultados da pesquisa</h3>
+          <button onClick={() => setVerResultados(false)} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ background: "var(--border)" }}>Voltar</button>
+        </div>
+        <div className="cc-card p-3 text-center" style={{ background: "#EAF1FE" }}>
+          <p className="cc-display font-bold text-2xl" style={{ color: "var(--blue-600)" }}>{todosVotos.length}</p>
+          <p className="text-xs font-medium" style={{ color: "var(--blue-600)" }}>votos registrados</p>
+        </div>
+        {CARGOS.map(cargo => {
+          const cands = getCandidatos(cargo);
+          if (cands.length === 0) return null;
+          const votosCargoTotal = todosVotos.filter(v => v[cargo]).length;
+          return (
+            <div key={cargo} className="cc-card p-4 flex flex-col gap-3">
+              <h4 className="cc-display font-semibold text-sm">{cargo}</h4>
+              {cands.map(c => {
+                const count = todosVotos.filter(v => v[cargo] === c.numero).length;
+                const pct = votosCargoTotal ? Math.round((count / votosCargoTotal) * 100) : 0;
+                return (
+                  <div key={c.numero} className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>{c.numero}</span>
+                    <div className="flex-1">
+                      <p className="text-xs font-medium">{c.nome} <span style={{ color: "var(--ink-300)" }}>({c.partido})</span></p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 h-2.5 rounded-full" style={{ background: "var(--border)" }}>
+                          <div className="h-2.5 rounded-full" style={{ width: `${pct}%`, background: "var(--blue-600)" }} />
+                        </div>
+                        <span className="text-xs font-bold cc-display w-16 text-right">{pct}% ({count})</span>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })}
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="cc-display font-semibold text-base">Votação</h3>
+          <p className="text-xs" style={{ color: "var(--ink-500)" }}>Escolha seu candidato por número — voto anônimo</p>
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => setVerResultados(true)} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ background: "var(--border)" }}>
+            Resultados ({todosVotos.length})
+          </button>
+          <button onClick={() => setEditMode(!editMode)} className="text-xs font-medium px-3 py-1.5 rounded-lg" style={{ background: editMode ? "var(--blue-600)" : "var(--border)", color: editMode ? "#fff" : "var(--ink-500)" }}>
+            <Settings size={13} />
+          </button>
+        </div>
+      </div>
+
+      {editMode && (
+        <div className="cc-card p-4 flex flex-col gap-4" style={{ background: "#FFF3DC" }}>
+          <p className="text-xs font-medium" style={{ color: "#9A6300" }}>Configurar candidatos por cargo</p>
+          {CARGOS.map(cargo => (
+            <div key={cargo} className="flex flex-col gap-2">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-semibold">{cargo}</span>
+                <button onClick={() => addCandidato(cargo)} className="text-xs flex items-center gap-1 font-medium" style={{ color: "var(--blue-600)" }}>
+                  <Plus size={12} /> Candidato
+                </button>
+              </div>
+              {getCandidatos(cargo).map((c, idx) => (
+                <div key={idx} className="flex gap-2 items-center">
+                  <input placeholder="Nº" className={inputCls} style={{ ...inputStyle, width: "4rem" }} value={c.numero} onChange={e => updateCandidato(cargo, idx, "numero", e.target.value)} />
+                  <input placeholder="Nome" className={inputCls} style={{ ...inputStyle, flex: 1 }} value={c.nome} onChange={e => updateCandidato(cargo, idx, "nome", e.target.value)} />
+                  <input placeholder="Partido" className={inputCls} style={{ ...inputStyle, width: "5rem" }} value={c.partido} onChange={e => updateCandidato(cargo, idx, "partido", e.target.value)} />
+                  <button onClick={() => removeCandidato(cargo, idx)} className="p-1"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                </div>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!editMode && CARGOS.map(cargo => {
+        const cands = getCandidatos(cargo);
+        if (cands.length === 0) return null;
+        const selected = votos[cargo];
+        return (
+          <div key={cargo} className="cc-card p-4 flex flex-col gap-3">
+            <h4 className="cc-display font-semibold text-sm">{cargo}</h4>
+            <div className="grid grid-cols-2 gap-2">
+              {cands.map(c => {
+                const isSelected = selected === c.numero;
+                return (
+                  <button key={c.numero} onClick={() => selecionarVoto(cargo, c.numero)}
+                    className="flex items-center gap-2 p-3 rounded-xl border-2 text-left"
+                    style={{ borderColor: isSelected ? "var(--blue-600)" : "var(--border)", background: isSelected ? "#EAF1FE" : "transparent" }}>
+                    <span className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ background: isSelected ? "var(--blue-600)" : "var(--border)", color: isSelected ? "#fff" : "var(--ink-500)" }}>
+                      {c.numero}
+                    </span>
+                    <div className="min-w-0">
+                      <p className="text-xs font-semibold truncate">{c.nome}</p>
+                      <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{c.partido}</p>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+
+      {!editMode && Object.keys(votos).filter(k => votos[k]).length > 0 && (
+        <button onClick={confirmarVoto}
+          className="w-full py-3 rounded-xl text-sm font-bold text-white"
+          style={{ background: "var(--green-500)" }}>
+          Confirmar voto
+        </button>
+      )}
+    </div>
+  );
+}
+
 function EmBreveView({ label }) {
   return (
     <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
@@ -2138,6 +2328,8 @@ export default function App() {
   const whatsGruposTable = useSupabaseTable("whats_grupos", []);
   const instagramTable = useSupabaseTable("instagram", []);
   const visitasCasaTable = useSupabaseTable("visitas_casa", []);
+  const votosPublicosTable = useSupabaseTable("votos_publicos", []);
+  const candidatosVotacaoKV = useSupabaseKV("candidatos_votacao", {});
 
   const eleitores = eleitoresTable.items;
   const setEleitores = eleitoresTable.setItems;
@@ -2163,6 +2355,7 @@ export default function App() {
   const setPesquisas = pesquisasTable.setItems;
   const documentos = documentosTable.items;
   const setDocumentos = documentosTable.setItems;
+  const candidatosVotacao = candidatosVotacaoKV.data;
 
   const current = MENU.find(m => m.key === view);
 
@@ -2202,6 +2395,7 @@ export default function App() {
         {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} candidatos={candidatos} candidatosKV={candidatosKV} />}
         {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} eleitores={eleitores} />}
         {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
+        {view === "votacao" && <VotacaoPublicaView candidatosConfig={candidatosVotacao} candidatosConfigKV={candidatosVotacaoKV} votosTable={votosPublicosTable} />}
         {current && !current.active && <EmBreveView label={current.label} />}
       </main>
 
