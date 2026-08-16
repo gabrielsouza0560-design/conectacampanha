@@ -65,7 +65,6 @@ const THEME = `
 // ---------------------------------------------------------------------------
 // Seed data
 // ---------------------------------------------------------------------------
-const BAIRROS = ["Centro", "Jardim das Flores", "Vila Nova", "Bela Vista", "São José", "Industrial"];
 const CIDADE_REDUTO = "Ivatuba";
 const CARGOS = ["Deputado Estadual", "Deputado Federal", "Senado", "Governador", "Presidente"];
 const INTENCOES = ["Nosso candidato", "Outro candidato", "Indeciso"];
@@ -183,7 +182,6 @@ const chartData = [
   { dia: "Dom", cadastros: 18, visitas: 10 },
 ];
 
-const bairroData = BAIRROS.map((b, i) => ({ bairro: b, apoiadores: [128, 40, 96, 62, 54, 54][i] }));
 
 const BOTTOM_TABS = [
   { key: "dashboard", label: "Início", icon: LayoutDashboard },
@@ -381,15 +379,13 @@ function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, materi
 
 function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
   const [query, setQuery] = useState("");
-  const [bairroFiltro, setBairroFiltro] = useState("Todos");
   const [cargoTab, setCargoTab] = useState(cargoInicial || "Todos");
   const [modal, setModal] = useState(null);
 
   const filtered = useMemo(() => items.filter(e => {
-    if (bairroFiltro !== "Todos" && e.bairro !== bairroFiltro) return false;
     if (query && !e.nome.toLowerCase().includes(query.toLowerCase())) return false;
     return true;
-  }), [items, query, bairroFiltro]);
+  }), [items, query]);
 
   const intencaoTone = {
     "Nosso candidato": { bg: "#E6F7EF", fg: "#1E8E5F" },
@@ -398,7 +394,7 @@ function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
   };
 
   function openNew() {
-    setModal({ mode: "new", data: { nome: "", telefone: "", bairro: BAIRROS[0], lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao(), duplicarTodos: true } });
+    setModal({ mode: "new", data: { nome: "", telefone: "", lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao(), duplicarTodos: true } });
   }
   function openEdit(item) {
     setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } });
@@ -466,10 +462,6 @@ function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
             <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome..."
               className={inputCls} style={{ ...inputStyle, paddingLeft: "2rem" }} />
           </div>
-          <select value={bairroFiltro} onChange={e => setBairroFiltro(e.target.value)} className={inputCls} style={inputStyle}>
-            <option>Todos</option>
-            {BAIRROS.map(b => <option key={b}>{b}</option>)}
-          </select>
         </div>
         <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white"
           style={{ background: "var(--blue-600)" }}>
@@ -490,7 +482,7 @@ function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{e.nome}</p>
-                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{e.telefone} • {e.bairro}{e.categoria ? ` • ${e.categoria}` : ""}</p>
+                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{e.telefone}{e.categoria ? ` • ${e.categoria}` : ""}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -550,11 +542,6 @@ function FormEleitor({ data, liderancas, onSave, cargoAtual }) {
           <input className={inputCls} style={inputStyle} value={form.cpf || ""} onChange={e => setForm({ ...form, cpf: e.target.value })} placeholder="000.000.000-00" />
         </Field>
       </div>
-      <Field label="Bairro">
-        <select className={inputCls} style={inputStyle} value={form.bairro} onChange={e => setForm({ ...form, bairro: e.target.value })}>
-          {BAIRROS.map(b => <option key={b}>{b}</option>)}
-        </select>
-      </Field>
       <Field label="Categoria">
         <select className={inputCls} style={inputStyle} value={form.categoria || ""} onChange={e => setForm({ ...form, categoria: e.target.value })}>
           <option value="">Sem categoria</option>
@@ -609,7 +596,7 @@ function FormEleitor({ data, liderancas, onSave, cargoAtual }) {
 function LiderancasView({ items, setItems, eleitores, table }) {
   const [modal, setModal] = useState(null);
 
-  function openNew() { setModal({ mode: "new", data: { nome: "", bairro: "", telefone: "", status: "Ativa" } }); }
+  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", status: "Ativa" } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
@@ -640,7 +627,7 @@ function LiderancasView({ items, setItems, eleitores, table }) {
                   </div>
                   <div>
                     <p className="font-semibold text-sm">{l.nome}</p>
-                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{l.bairro}</p>
+                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{l.telefone}</p>
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -673,7 +660,6 @@ function FormLideranca({ data, onSave }) {
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
       <Field label="Nome"><input required className={inputCls} style={inputStyle} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></Field>
-      <Field label="Bairro / Região"><input required className={inputCls} style={inputStyle} value={form.bairro} onChange={e => setForm({ ...form, bairro: e.target.value })} /></Field>
       <Field label="Telefone"><input required className={inputCls} style={inputStyle} value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} /></Field>
       <Field label="Status">
         <select className={inputCls} style={inputStyle} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
@@ -689,7 +675,7 @@ function DemandasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statuses = ["Nova", "Em análise", "Em andamento", "Resolvida", "Cancelada"];
 
-  function openNew() { setModal({ mode: "new", data: { solicitante: "", categoria: "Saúde", descricao: "", bairro: BAIRROS[0], prioridade: "Média", status: "Nova", prazo: "" } }); }
+  function openNew() { setModal({ mode: "new", data: { solicitante: "", categoria: "Saúde", descricao: "", prioridade: "Média", status: "Nova", prazo: "" } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
@@ -718,7 +704,7 @@ function DemandasView({ items, setItems, table }) {
                 <PrioTag p={d.prioridade} />
               </div>
               <p className="text-xs" style={{ color: "var(--ink-500)" }}>
-                {d.solicitante} • {d.categoria} • {d.bairro} • prazo {d.prazo}
+                {d.solicitante} • {d.categoria} • prazo {d.prazo}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -748,18 +734,11 @@ function FormDemanda({ data, onSave, statuses }) {
     <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
       <Field label="Solicitante"><input required className={inputCls} style={inputStyle} value={form.solicitante} onChange={e => setForm({ ...form, solicitante: e.target.value })} /></Field>
       <Field label="Descrição"><textarea required rows={2} className={inputCls} style={inputStyle} value={form.descricao} onChange={e => setForm({ ...form, descricao: e.target.value })} /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Categoria">
-          <select className={inputCls} style={inputStyle} value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })}>
-            <option>Saúde</option><option>Educação</option><option>Infraestrutura</option><option>Assistência social</option><option>Outros</option>
-          </select>
-        </Field>
-        <Field label="Bairro">
-          <select className={inputCls} style={inputStyle} value={form.bairro} onChange={e => setForm({ ...form, bairro: e.target.value })}>
-            {BAIRROS.map(b => <option key={b}>{b}</option>)}
-          </select>
-        </Field>
-      </div>
+      <Field label="Categoria">
+        <select className={inputCls} style={inputStyle} value={form.categoria} onChange={e => setForm({ ...form, categoria: e.target.value })}>
+          <option>Saúde</option><option>Educação</option><option>Infraestrutura</option><option>Assistência social</option><option>Outros</option>
+        </select>
+      </Field>
       <div className="grid grid-cols-2 gap-3">
         <Field label="Prioridade">
           <select className={inputCls} style={inputStyle} value={form.prioridade} onChange={e => setForm({ ...form, prioridade: e.target.value })}>
@@ -1623,13 +1602,11 @@ function MensagensView({ eleitores }) {
   const [midiaPreview, setMidiaPreview] = useState(null);
   const [filtro, setFiltro] = useState("Todos");
   const [enviados, setEnviados] = useState({});
-  const [bairroFiltro, setBairroFiltro] = useState("Todos");
 
   const destinatarios = useMemo(() => eleitores.filter(e => {
     if (filtro !== "Todos" && e.status !== filtro) return false;
-    if (bairroFiltro !== "Todos" && e.bairro !== bairroFiltro) return false;
     return e.telefone;
-  }), [eleitores, filtro, bairroFiltro]);
+  }), [eleitores, filtro]);
 
   function handleMidia(e) {
     const file = e.target.files?.[0];
@@ -1647,7 +1624,7 @@ function MensagensView({ eleitores }) {
   function personalizar(texto, eleitor) {
     return texto
       .replace(/\{nome\}/gi, eleitor.nome || "")
-      .replace(/\{bairro\}/gi, eleitor.bairro || "")
+      .replace(/\{bairro\}/gi, "Ivatuba")
       .replace(/\{lideranca\}/gi, eleitor.lideranca || "");
   }
 
@@ -1698,7 +1675,7 @@ function MensagensView({ eleitores }) {
       <div className="cc-card p-4 flex items-start gap-2" style={{ background: "#EAF1FE" }}>
         <Send size={16} style={{ color: "var(--blue-600)" }} className="mt-0.5 flex-shrink-0" />
         <p className="text-xs" style={{ color: "var(--navy-900)" }}>
-          Mensagem personalizada via WhatsApp. Use <strong>{"{nome}"}</strong>, <strong>{"{bairro}"}</strong> e <strong>{"{lideranca}"}</strong> para personalizar. Anexe foto ou vídeo para enviar junto.
+          Mensagem personalizada via WhatsApp. Use <strong>{"{nome}"}</strong> e <strong>{"{lideranca}"}</strong> para personalizar. Anexe foto ou vídeo para enviar junto.
         </p>
       </div>
 
@@ -1707,7 +1684,7 @@ function MensagensView({ eleitores }) {
         <textarea
           value={mensagem}
           onChange={e => setMensagem(e.target.value)}
-          placeholder={"Olá {nome}! Aqui é da campanha em {bairro}. Contamos com seu apoio..."}
+          placeholder={"Olá {nome}! Aqui é da campanha em Ivatuba. Contamos com seu apoio..."}
           className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 min-h-[100px] resize-y"
           style={{ borderColor: "var(--border)" }}
         />
@@ -1748,15 +1725,6 @@ function MensagensView({ eleitores }) {
             </button>
           ))}
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {["Todos", ...BAIRROS].map(b => (
-            <button key={b} onClick={() => setBairroFiltro(b)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{ background: bairroFiltro === b ? "var(--navy-900)" : "var(--border)", color: bairroFiltro === b ? "#fff" : "var(--ink-500)" }}>
-              {b}
-            </button>
-          ))}
-        </div>
         <p className="text-xs" style={{ color: "var(--ink-500)" }}>
           {destinatarios.length} destinatário{destinatarios.length !== 1 ? "s" : ""} • {enviadosCount} enviado{enviadosCount !== 1 ? "s" : ""}
         </p>
@@ -1783,7 +1751,7 @@ function MensagensView({ eleitores }) {
                   </div>
                   <div>
                     <p className="text-sm font-medium">{el.nome}</p>
-                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{el.telefone} • {el.bairro}</p>
+                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{el.telefone}</p>
                   </div>
                 </div>
                 {sent && <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "#E6F7EF", color: "#1E8E5F" }}>Enviado</span>}
@@ -1814,7 +1782,7 @@ function WhatsGruposView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statusTone = { "Ativo": "cc-badge-resolvida", "Inativo": "cc-badge-cancelada", "Novo": "cc-badge-nova" };
 
-  function openNew() { setModal({ mode: "new", data: { nome: "", link: "", membros: "", admin: "", bairro: "", status: "Ativo", observacoes: "" } }); }
+  function openNew() { setModal({ mode: "new", data: { nome: "", link: "", membros: "", admin: "", status: "Ativo", observacoes: "" } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     const payload = { ...form, membros: Number(form.membros) || 0 };
@@ -1847,7 +1815,7 @@ function WhatsGruposView({ items, setItems, table }) {
                 </div>
                 <div>
                   <p className="font-semibold text-sm">{g.nome}</p>
-                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{g.membros || 0} membros • {g.bairro || "Sem bairro"}</p>
+                  <p className="text-xs" style={{ color: "var(--ink-500)" }}>{g.membros || 0} membros</p>
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -1881,12 +1849,6 @@ function WhatsGruposView({ items, setItems, table }) {
               </Field>
             </div>
             <Field label="Admin"><input className={inputCls} style={inputStyle} value={modal.data.admin} onChange={e => setModal({ ...modal, data: { ...modal.data, admin: e.target.value } })} /></Field>
-            <Field label="Bairro">
-              <select className={inputCls} style={inputStyle} value={modal.data.bairro} onChange={e => setModal({ ...modal, data: { ...modal.data, bairro: e.target.value } })}>
-                <option value="">Selecionar</option>
-                {BAIRROS.map(b => <option key={b}>{b}</option>)}
-              </select>
-            </Field>
             <Field label="Observações"><input className={inputCls} style={inputStyle} value={modal.data.observacoes} onChange={e => setModal({ ...modal, data: { ...modal.data, observacoes: e.target.value } })} /></Field>
             <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "#25D366" }}>Salvar</button>
           </form>
@@ -1982,7 +1944,7 @@ function VisitaCasaView({ items, setItems, table }) {
   const reacaoIcon = { "Apoia": ThumbsUp, "Indeciso": Minus, "Não apoia": ThumbsDown };
   const reacaoTone = { "Apoia": "cc-badge-resolvida", "Indeciso": "cc-badge-analise", "Não apoia": "cc-badge-cancelada" };
 
-  function openNew() { setModal({ mode: "new", data: { morador: "", endereco: "", bairro: BAIRROS[0], data: "", hora: "", visitante: "", reacao: "Indeciso", observacoes: "", retornar: false } }); }
+  function openNew() { setModal({ mode: "new", data: { morador: "", endereco: "", data: "", hora: "", visitante: "", reacao: "Indeciso", observacoes: "", retornar: false } }); }
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") table.insert(form);
@@ -2028,7 +1990,7 @@ function VisitaCasaView({ items, setItems, table }) {
                   </div>
                   <div>
                     <p className="font-semibold text-sm">{v.morador}</p>
-                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{v.endereco} • {v.bairro}</p>
+                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{v.endereco}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-1">
@@ -2053,11 +2015,6 @@ function VisitaCasaView({ items, setItems, table }) {
           <form onSubmit={e => { e.preventDefault(); save(modal.data); }}>
             <Field label="Nome do morador"><input required className={inputCls} style={inputStyle} value={modal.data.morador} onChange={e => setModal({ ...modal, data: { ...modal.data, morador: e.target.value } })} /></Field>
             <Field label="Endereço"><input required className={inputCls} style={inputStyle} value={modal.data.endereco} onChange={e => setModal({ ...modal, data: { ...modal.data, endereco: e.target.value } })} /></Field>
-            <Field label="Bairro">
-              <select className={inputCls} style={inputStyle} value={modal.data.bairro} onChange={e => setModal({ ...modal, data: { ...modal.data, bairro: e.target.value } })}>
-                {BAIRROS.map(b => <option key={b}>{b}</option>)}
-              </select>
-            </Field>
             <div className="grid grid-cols-2 gap-3">
               <Field label="Data"><input type="date" required className={inputCls} style={inputStyle} value={modal.data.data} onChange={e => setModal({ ...modal, data: { ...modal.data, data: e.target.value } })} /></Field>
               <Field label="Hora"><input type="time" className={inputCls} style={inputStyle} value={modal.data.hora} onChange={e => setModal({ ...modal, data: { ...modal.data, hora: e.target.value } })} /></Field>
@@ -2304,10 +2261,6 @@ function CabosEleitoraisView({ items, setItems, table }) {
       <div className="cc-card p-4 flex flex-col gap-3">
         <input placeholder="Nome *" className={inputCls} style={inputStyle} value={form.nome || ""} onChange={e => f("nome", e.target.value)} />
         <input placeholder="Telefone" className={inputCls} style={inputStyle} value={form.telefone || ""} onChange={e => f("telefone", e.target.value)} />
-        <select className={inputCls} style={inputStyle} value={form.bairro || ""} onChange={e => f("bairro", e.target.value)}>
-          <option value="">Bairro</option>
-          {BAIRROS.map(b => <option key={b}>{b}</option>)}
-        </select>
         <input placeholder="Meta de contatos" type="number" className={inputCls} style={inputStyle} value={form.meta || ""} onChange={e => f("meta", e.target.value)} />
         <input placeholder="Contatos realizados" type="number" className={inputCls} style={inputStyle} value={form.contatosRealizados || ""} onChange={e => f("contatosRealizados", e.target.value)} />
         <select className={inputCls} style={inputStyle} value={form.status || "Ativo"} onChange={e => f("status", e.target.value)}>
@@ -2323,7 +2276,7 @@ function CabosEleitoraisView({ items, setItems, table }) {
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-between">
         <h3 className="cc-display font-semibold text-base">Cabos Eleitorais</h3>
-        <button onClick={() => setForm({ nome: "", telefone: "", bairro: "", meta: 50, contatosRealizados: 0, status: "Ativo", observacoes: "" })}
+        <button onClick={() => setForm({ nome: "", telefone: "", meta: 50, contatosRealizados: 0, status: "Ativo", observacoes: "" })}
           className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "var(--blue-600)" }}>
           <Plus size={14} /> Novo
         </button>
@@ -2345,7 +2298,7 @@ function CabosEleitoraisView({ items, setItems, table }) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-semibold">{c.nome}</p>
-                <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{c.bairro} • {c.telefone}</p>
+                <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{c.telefone}</p>
               </div>
               <div className="flex gap-1">
                 <button onClick={() => setForm(c)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
@@ -2513,7 +2466,7 @@ function HistoricoContatoView({ eleitores, setEleitores, eleitoresTable, histori
         <div>
           <button onClick={() => setSelecionado(null)} className="text-xs font-medium mb-1" style={{ color: "var(--blue-600)" }}>← Voltar</button>
           <h3 className="cc-display font-semibold text-base">{selecionado.nome}</h3>
-          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{selecionado.telefone} • {selecionado.bairro}</p>
+          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{selecionado.telefone}</p>
         </div>
         <button onClick={() => setForm({ data: new Date().toISOString().slice(0, 10), tipo: "WhatsApp", descricao: "" })}
           className="flex items-center gap-1 text-xs font-semibold px-3 py-1.5 rounded-lg text-white" style={{ background: "var(--blue-600)" }}>
@@ -2566,7 +2519,7 @@ function HistoricoContatoView({ eleitores, setEleitores, eleitoresTable, histori
           <button key={e.id} onClick={() => setSelecionado(e)} className="cc-card p-3 flex items-center justify-between text-left w-full">
             <div>
               <p className="text-sm font-semibold">{e.nome}</p>
-              <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{e.bairro} • {e.telefone}</p>
+              <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{e.telefone}</p>
               {ultimo && <p className="text-[10px] mt-1" style={{ color: "var(--blue-600)" }}>Último: {ultimo.tipo} em {ultimo.data}</p>}
             </div>
             <ChevronRight size={16} style={{ color: "var(--ink-300)" }} />
@@ -2594,9 +2547,9 @@ function ExportarView({ eleitores, cabos, liderancas }) {
   }
 
   const exports = [
-    { label: "Eleitores", desc: `${eleitores.length} registros`, icon: Users, action: () => exportCSV(eleitores, "eleitores_ivatuba.csv", ["nome", "telefone", "bairro", "categoria", "status", "lideranca", "tags", "cadastro"]) },
-    { label: "Cabos Eleitorais", desc: `${cabos.length} registros`, icon: Target, action: () => exportCSV(cabos, "cabos_eleitorais.csv", ["nome", "telefone", "bairro", "meta", "contatosRealizados", "status"]) },
-    { label: "Lideranças", desc: `${liderancas.length} registros`, icon: Crown, action: () => exportCSV(liderancas, "liderancas.csv", ["nome", "bairro", "telefone", "apoiadores"]) },
+    { label: "Eleitores", desc: `${eleitores.length} registros`, icon: Users, action: () => exportCSV(eleitores, "eleitores_ivatuba.csv", ["nome", "telefone", "categoria", "status", "lideranca", "tags", "cadastro"]) },
+    { label: "Cabos Eleitorais", desc: `${cabos.length} registros`, icon: Target, action: () => exportCSV(cabos, "cabos_eleitorais.csv", ["nome", "telefone", "meta", "contatosRealizados", "status"]) },
+    { label: "Lideranças", desc: `${liderancas.length} registros`, icon: Crown, action: () => exportCSV(liderancas, "liderancas.csv", ["nome", "telefone", "apoiadores"]) },
   ];
 
   return (
