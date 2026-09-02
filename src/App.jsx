@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useCallback } from "react";
+import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useSupabaseTable, useSupabaseKV } from "./useSupabase";
 import InstallPrompt from "./InstallPrompt";
 import {
@@ -10,8 +10,11 @@ import {
   Wallet, Package, Vote, ExternalLink,
   Send, Image, Video, Copy, Share2,
   Home, Instagram, UsersRound, ThumbsUp, ThumbsDown, Minus,
-  Download, QrCode, UserCheck, Shield, Eye, Target, MessageSquare
+  Download, QrCode, UserCheck, Shield, Eye, Target, MessageSquare,
+  Landmark, Globe, Star, ArrowLeft, Link2, ChevronDown, ChevronUp,
+  Building2, Briefcase, DollarSign, GraduationCap, Heart
 } from "lucide-react";
+import jsPDF from "jspdf";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
   BarChart, Bar, CartesianGrid
@@ -209,6 +212,7 @@ const MORE_ITEMS = [
   { key: "diad", label: "Dia D", icon: Shield, active: true },
   { key: "historico", label: "Histórico Contato", icon: MessageSquare, active: true },
   { key: "exportar", label: "Exportar", icon: Download, active: true },
+  { key: "deputados", label: "Deputados", icon: Landmark, active: true },
 ];
 
 const MENU = [
@@ -2575,6 +2579,600 @@ function ExportarView({ eleitores, cabos, liderancas }) {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Propostas de Deputados
+// ---------------------------------------------------------------------------
+const AREAS_ATUACAO = ["Saúde", "Educação", "Infraestrutura", "Agricultura", "Esporte", "Assistência Social", "Segurança", "Turismo", "Cultura", "Desenvolvimento Econômico", "Meio Ambiente", "Obras"];
+const STATUS_PROPOSTA_DEP = ["Proposta", "Em análise", "Em andamento", "Aprovada", "Executada", "Concluída", "Cancelada"];
+const STATUS_ACAO_DEP = ["Planejada", "Em andamento", "Concluída", "Cancelada"];
+const PARTIDOS = ["PL", "PT", "MDB", "PP", "UNIÃO", "PSD", "REPUBLICANOS", "PDT", "PSDB", "PODE", "PSB", "AVANTE", "CIDADANIA", "SOLIDARIEDADE", "NOVO", "PSOL", "REDE", "PCdoB", "PV", "Outro"];
+const CARGO_DEP = ["Deputado Estadual", "Deputado Federal", "Senador"];
+
+function badgePropDep(status) {
+  const map = { "Proposta": "cc-badge-nova", "Em análise": "cc-badge-analise", "Em andamento": "cc-badge-andamento", "Aprovada": "cc-badge-resolvida", "Executada": "cc-badge-resolvida", "Concluída": "cc-badge-resolvida", "Cancelada": "cc-badge-cancelada" };
+  return map[status] || "cc-badge-nova";
+}
+
+function badgeAcaoDep(status) {
+  const map = { "Planejada": "cc-badge-nova", "Em andamento": "cc-badge-andamento", "Concluída": "cc-badge-resolvida", "Cancelada": "cc-badge-cancelada" };
+  return map[status] || "cc-badge-nova";
+}
+
+function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
+  const deputados = deputadosTable.items;
+  const acoes = acoesTable.items;
+  const propostas = propostasTable.items;
+
+  const [subView, setSubView] = useState("lista");
+  const [selecionado, setSelecionado] = useState(null);
+  const [detalheTab, setDetalheTab] = useState("perfil");
+  const [busca, setBusca] = useState("");
+  const [showForm, setShowForm] = useState(false);
+  const [editDep, setEditDep] = useState(null);
+  const [showAcaoForm, setShowAcaoForm] = useState(false);
+  const [editAcao, setEditAcao] = useState(null);
+  const [showPropForm, setShowPropForm] = useState(false);
+  const [editProp, setEditProp] = useState(null);
+  const publicoRef = useRef(null);
+
+  const depVazio = { nome: "", partido: "", cargo: "Deputado Estadual", estado: "PR", municipios: CIDADE_REDUTO, foto: "", biografia: "", email: "", telefone: "", instagram: "", facebook: "", mandatoInicio: "", mandatoFim: "" };
+  const acaoVazia = { deputadoId: "", titulo: "", descricao: "", categoria: "Saúde", municipio: CIDADE_REDUTO, data: new Date().toISOString().slice(0, 10), valor: "", status: "Planejada", evidencia: "" };
+  const propVazia = { deputadoId: "", titulo: "", descricao: "", area: "Saúde", status: "Proposta", dataApresentacao: new Date().toISOString().slice(0, 10), impacto: "" };
+
+  const [formDep, setFormDep] = useState(depVazio);
+  const [formAcao, setFormAcao] = useState(acaoVazia);
+  const [formProp, setFormProp] = useState(propVazia);
+
+  function salvarDeputado() {
+    if (!formDep.nome.trim()) return;
+    if (editDep) {
+      deputadosTable.update(editDep.id, formDep);
+    } else {
+      deputadosTable.insert(formDep);
+    }
+    setShowForm(false); setEditDep(null); setFormDep(depVazio);
+  }
+  function excluirDeputado(id) {
+    deputadosTable.remove(id);
+    acoes.filter(a => a.deputadoId === id).forEach(a => acoesTable.remove(a.id));
+    propostas.filter(p => p.deputadoId === id).forEach(p => propostasTable.remove(p.id));
+    if (selecionado?.id === id) { setSelecionado(null); setSubView("lista"); }
+  }
+  function iniciarEdicaoDep(dep) { setFormDep({ ...dep }); setEditDep(dep); setShowForm(true); }
+
+  function salvarAcao() {
+    if (!formAcao.titulo.trim()) return;
+    const payload = { ...formAcao, deputadoId: selecionado.id, valor: formAcao.valor ? Number(formAcao.valor) : 0 };
+    if (editAcao) { acoesTable.update(editAcao.id, payload); }
+    else { acoesTable.insert(payload); }
+    setShowAcaoForm(false); setEditAcao(null); setFormAcao(acaoVazia);
+  }
+  function excluirAcao(id) { acoesTable.remove(id); }
+
+  function salvarProposta() {
+    if (!formProp.titulo.trim()) return;
+    const payload = { ...formProp, deputadoId: selecionado.id };
+    if (editProp) { propostasTable.update(editProp.id, payload); }
+    else { propostasTable.insert(payload); }
+    setShowPropForm(false); setEditProp(null); setFormProp(propVazia);
+  }
+  function excluirProposta(id) { propostasTable.remove(id); }
+
+  function gerarPDF(dep) {
+    const depAcoes = acoes.filter(a => a.deputadoId === dep.id);
+    const depProps = propostas.filter(p => p.deputadoId === dep.id);
+    const doc = new jsPDF();
+    let y = 20;
+    doc.setFontSize(18); doc.setFont(undefined, "bold");
+    doc.text(dep.nome, 105, y, { align: "center" }); y += 8;
+    doc.setFontSize(11); doc.setFont(undefined, "normal");
+    doc.text(`${dep.cargo} - ${dep.partido} | ${dep.estado}`, 105, y, { align: "center" }); y += 12;
+    if (dep.biografia) { doc.setFontSize(10); const lines = doc.splitTextToSize(dep.biografia, 170); doc.text(lines, 20, y); y += lines.length * 5 + 8; }
+    if (depAcoes.length) {
+      doc.setFontSize(14); doc.setFont(undefined, "bold"); doc.text("Ações Realizadas", 20, y); y += 8;
+      doc.setFontSize(10); doc.setFont(undefined, "normal");
+      depAcoes.forEach(a => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(`• ${a.titulo} (${a.categoria}) - ${a.status}`, 25, y); y += 5;
+        if (a.descricao) { const dl = doc.splitTextToSize(a.descricao, 155); doc.text(dl, 30, y); y += dl.length * 5; }
+        if (a.valor) { doc.text(`  Recurso: R$ ${Number(a.valor).toLocaleString("pt-BR")}`, 30, y); y += 5; }
+        y += 3;
+      });
+      y += 5;
+    }
+    if (depProps.length) {
+      if (y > 240) { doc.addPage(); y = 20; }
+      doc.setFontSize(14); doc.setFont(undefined, "bold"); doc.text("Propostas", 20, y); y += 8;
+      doc.setFontSize(10); doc.setFont(undefined, "normal");
+      depProps.forEach(p => {
+        if (y > 270) { doc.addPage(); y = 20; }
+        doc.text(`• ${p.titulo} [${p.status}] - ${p.area}`, 25, y); y += 5;
+        if (p.descricao) { const dl = doc.splitTextToSize(p.descricao, 155); doc.text(dl, 30, y); y += dl.length * 5; }
+        y += 3;
+      });
+    }
+    doc.setFontSize(8); doc.text(`Gerado por CONecta Campanha em ${new Date().toLocaleDateString("pt-BR")}`, 105, 290, { align: "center" });
+    doc.save(`${dep.nome.replace(/\s+/g, "_")}_propostas.pdf`);
+  }
+
+  function compartilhar(dep) {
+    const depProps = propostas.filter(p => p.deputadoId === dep.id);
+    const depAcoes = acoes.filter(a => a.deputadoId === dep.id);
+    const text = `📋 *${dep.nome}*\n${dep.cargo} - ${dep.partido}\n\n` +
+      (depAcoes.length ? `✅ ${depAcoes.filter(a => a.status === "Concluída").length} ações concluídas\n` : "") +
+      (depProps.length ? `📝 ${depProps.length} propostas apresentadas\n` : "") +
+      `\nVeja mais no CONecta Campanha!`;
+    if (navigator.share) { navigator.share({ title: dep.nome, text }); }
+    else { navigator.clipboard.writeText(text); alert("Copiado!"); }
+  }
+
+  const depsFiltrados = useMemo(() => deputados.filter(d => !busca || d.nome?.toLowerCase().includes(busca.toLowerCase()) || d.partido?.toLowerCase().includes(busca.toLowerCase())), [deputados, busca]);
+
+  // ---- Formulário Deputado ----
+  const formDeputadoUI = showForm && (
+    <div className="cc-card p-4 flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-semibold">{editDep ? "Editar Deputado" : "Novo Deputado"}</h4>
+        <button onClick={() => { setShowForm(false); setEditDep(null); setFormDep(depVazio); }}><X size={16} /></button>
+      </div>
+      <input placeholder="Nome completo *" className={inputCls} style={inputStyle} value={formDep.nome} onChange={e => setFormDep(p => ({ ...p, nome: e.target.value }))} />
+      <div className="grid grid-cols-2 gap-2">
+        <select className={inputCls} style={inputStyle} value={formDep.partido} onChange={e => setFormDep(p => ({ ...p, partido: e.target.value }))}>
+          <option value="">Partido</option>
+          {PARTIDOS.map(p => <option key={p}>{p}</option>)}
+        </select>
+        <select className={inputCls} style={inputStyle} value={formDep.cargo} onChange={e => setFormDep(p => ({ ...p, cargo: e.target.value }))}>
+          {CARGO_DEP.map(c => <option key={c}>{c}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input placeholder="Estado (UF)" className={inputCls} style={inputStyle} value={formDep.estado} onChange={e => setFormDep(p => ({ ...p, estado: e.target.value }))} />
+        <input placeholder="Municípios" className={inputCls} style={inputStyle} value={formDep.municipios} onChange={e => setFormDep(p => ({ ...p, municipios: e.target.value }))} />
+      </div>
+      <input placeholder="URL da foto" className={inputCls} style={inputStyle} value={formDep.foto} onChange={e => setFormDep(p => ({ ...p, foto: e.target.value }))} />
+      <textarea placeholder="Biografia / histórico" className={inputCls} style={{ ...inputStyle, minHeight: 80 }} value={formDep.biografia} onChange={e => setFormDep(p => ({ ...p, biografia: e.target.value }))} />
+      <div className="grid grid-cols-2 gap-2">
+        <input placeholder="E-mail" className={inputCls} style={inputStyle} value={formDep.email} onChange={e => setFormDep(p => ({ ...p, email: e.target.value }))} />
+        <input placeholder="Telefone" className={inputCls} style={inputStyle} value={formDep.telefone} onChange={e => setFormDep(p => ({ ...p, telefone: e.target.value }))} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input placeholder="Instagram" className={inputCls} style={inputStyle} value={formDep.instagram} onChange={e => setFormDep(p => ({ ...p, instagram: e.target.value }))} />
+        <input placeholder="Facebook" className={inputCls} style={inputStyle} value={formDep.facebook} onChange={e => setFormDep(p => ({ ...p, facebook: e.target.value }))} />
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input type="date" className={inputCls} style={inputStyle} value={formDep.mandatoInicio} onChange={e => setFormDep(p => ({ ...p, mandatoInicio: e.target.value }))} />
+        <input type="date" className={inputCls} style={inputStyle} value={formDep.mandatoFim} onChange={e => setFormDep(p => ({ ...p, mandatoFim: e.target.value }))} />
+      </div>
+      <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Início e fim do mandato</p>
+      <button onClick={salvarDeputado} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>{editDep ? "Salvar" : "Cadastrar"}</button>
+    </div>
+  );
+
+  // ---- Formulário Ação ----
+  const formAcaoUI = showAcaoForm && (
+    <div className="cc-card p-4 flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-semibold">{editAcao ? "Editar Ação" : "Nova Ação"}</h4>
+        <button onClick={() => { setShowAcaoForm(false); setEditAcao(null); setFormAcao(acaoVazia); }}><X size={16} /></button>
+      </div>
+      <input placeholder="Título da ação *" className={inputCls} style={inputStyle} value={formAcao.titulo} onChange={e => setFormAcao(p => ({ ...p, titulo: e.target.value }))} />
+      <textarea placeholder="Descrição" className={inputCls} style={{ ...inputStyle, minHeight: 60 }} value={formAcao.descricao} onChange={e => setFormAcao(p => ({ ...p, descricao: e.target.value }))} />
+      <div className="grid grid-cols-2 gap-2">
+        <select className={inputCls} style={inputStyle} value={formAcao.categoria} onChange={e => setFormAcao(p => ({ ...p, categoria: e.target.value }))}>
+          {AREAS_ATUACAO.map(a => <option key={a}>{a}</option>)}
+        </select>
+        <select className={inputCls} style={inputStyle} value={formAcao.status} onChange={e => setFormAcao(p => ({ ...p, status: e.target.value }))}>
+          {STATUS_ACAO_DEP.map(s => <option key={s}>{s}</option>)}
+        </select>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <input type="date" className={inputCls} style={inputStyle} value={formAcao.data} onChange={e => setFormAcao(p => ({ ...p, data: e.target.value }))} />
+        <input type="number" placeholder="Valor R$" className={inputCls} style={inputStyle} value={formAcao.valor} onChange={e => setFormAcao(p => ({ ...p, valor: e.target.value }))} />
+      </div>
+      <input placeholder="Município" className={inputCls} style={inputStyle} value={formAcao.municipio} onChange={e => setFormAcao(p => ({ ...p, municipio: e.target.value }))} />
+      <input placeholder="Evidência (link ou descrição)" className={inputCls} style={inputStyle} value={formAcao.evidencia} onChange={e => setFormAcao(p => ({ ...p, evidencia: e.target.value }))} />
+      <button onClick={salvarAcao} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>{editAcao ? "Salvar" : "Adicionar"}</button>
+    </div>
+  );
+
+  // ---- Formulário Proposta ----
+  const formPropUI = showPropForm && (
+    <div className="cc-card p-4 flex flex-col gap-3">
+      <div className="flex justify-between items-center">
+        <h4 className="text-sm font-semibold">{editProp ? "Editar Proposta" : "Nova Proposta"}</h4>
+        <button onClick={() => { setShowPropForm(false); setEditProp(null); setFormProp(propVazia); }}><X size={16} /></button>
+      </div>
+      <input placeholder="Título da proposta *" className={inputCls} style={inputStyle} value={formProp.titulo} onChange={e => setFormProp(p => ({ ...p, titulo: e.target.value }))} />
+      <textarea placeholder="Descrição detalhada" className={inputCls} style={{ ...inputStyle, minHeight: 60 }} value={formProp.descricao} onChange={e => setFormProp(p => ({ ...p, descricao: e.target.value }))} />
+      <div className="grid grid-cols-2 gap-2">
+        <select className={inputCls} style={inputStyle} value={formProp.area} onChange={e => setFormProp(p => ({ ...p, area: e.target.value }))}>
+          {AREAS_ATUACAO.map(a => <option key={a}>{a}</option>)}
+        </select>
+        <select className={inputCls} style={inputStyle} value={formProp.status} onChange={e => setFormProp(p => ({ ...p, status: e.target.value }))}>
+          {STATUS_PROPOSTA_DEP.map(s => <option key={s}>{s}</option>)}
+        </select>
+      </div>
+      <input type="date" className={inputCls} style={inputStyle} value={formProp.dataApresentacao} onChange={e => setFormProp(p => ({ ...p, dataApresentacao: e.target.value }))} />
+      <textarea placeholder="Impacto esperado" className={inputCls} style={{ ...inputStyle, minHeight: 50 }} value={formProp.impacto} onChange={e => setFormProp(p => ({ ...p, impacto: e.target.value }))} />
+      <button onClick={salvarProposta} className="w-full py-2.5 rounded-xl text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>{editProp ? "Salvar" : "Adicionar"}</button>
+    </div>
+  );
+
+  // ---- Página Pública (Preview) ----
+  function PaginaPublica({ dep }) {
+    const depAcoes = acoes.filter(a => a.deputadoId === dep.id);
+    const depProps = propostas.filter(p => p.deputadoId === dep.id);
+    const totalRecursos = depAcoes.reduce((s, a) => s + (Number(a.valor) || 0), 0);
+    const acoesConcluidas = depAcoes.filter(a => a.status === "Concluída").length;
+    const areaCount = {};
+    depAcoes.forEach(a => { areaCount[a.categoria] = (areaCount[a.categoria] || 0) + 1; });
+    const topAreas = Object.entries(areaCount).sort((a, b) => b[1] - a[1]).slice(0, 5);
+
+    return (
+      <div ref={publicoRef} className="flex flex-col gap-0 -mx-4 -mt-4" style={{ background: "var(--paper)" }}>
+        {/* Hero */}
+        <div className="cc-sash text-white px-5 py-8 relative z-10">
+          <div className="flex items-center gap-4">
+            {dep.foto ? (
+              <img src={dep.foto} alt={dep.nome} className="w-20 h-20 rounded-full object-cover border-2 border-white/30" />
+            ) : (
+              <div className="w-20 h-20 rounded-full flex items-center justify-center text-2xl font-bold" style={{ background: "rgba(255,255,255,0.15)" }}>
+                {dep.nome?.charAt(0)}
+              </div>
+            )}
+            <div>
+              <h1 className="cc-display text-xl font-bold">{dep.nome}</h1>
+              <p className="text-sm opacity-80">{dep.cargo} • {dep.partido}</p>
+              <p className="text-xs opacity-60">{dep.estado} {dep.municipios && `• ${dep.municipios}`}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats */}
+        <div className="grid grid-cols-3 gap-2 px-4 -mt-4 relative z-20">
+          <div className="cc-card p-3 text-center">
+            <p className="cc-display text-lg font-bold" style={{ color: "var(--blue-600)" }}>{depAcoes.length}</p>
+            <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Ações</p>
+          </div>
+          <div className="cc-card p-3 text-center">
+            <p className="cc-display text-lg font-bold" style={{ color: "var(--green-500)" }}>{depProps.length}</p>
+            <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Propostas</p>
+          </div>
+          <div className="cc-card p-3 text-center">
+            <p className="cc-display text-lg font-bold" style={{ color: "var(--amber-500)" }}>{totalRecursos ? `R$${(totalRecursos / 1000).toFixed(0)}k` : "—"}</p>
+            <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Recursos</p>
+          </div>
+        </div>
+
+        {/* Bio */}
+        {dep.biografia && (
+          <div className="cc-card mx-4 mt-4 p-4">
+            <h3 className="cc-display text-sm font-semibold mb-2">Sobre</h3>
+            <p className="text-xs leading-relaxed" style={{ color: "var(--ink-500)" }}>{dep.biografia}</p>
+          </div>
+        )}
+
+        {/* Áreas de atuação */}
+        {topAreas.length > 0 && (
+          <div className="cc-card mx-4 mt-3 p-4">
+            <h3 className="cc-display text-sm font-semibold mb-3">Áreas de Atuação</h3>
+            <div className="flex flex-col gap-2">
+              {topAreas.map(([area, count]) => (
+                <div key={area} className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <div className="flex justify-between mb-1">
+                      <span className="text-xs font-medium">{area}</span>
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{count} {count === 1 ? "ação" : "ações"}</span>
+                    </div>
+                    <div className="h-1.5 rounded-full" style={{ background: "var(--border)" }}>
+                      <div className="h-full rounded-full" style={{ background: "var(--blue-600)", width: `${Math.min((count / Math.max(...topAreas.map(t => t[1]))) * 100, 100)}%` }} />
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Timeline de ações */}
+        {depAcoes.length > 0 && (
+          <div className="cc-card mx-4 mt-3 p-4">
+            <h3 className="cc-display text-sm font-semibold mb-3">Ações Realizadas</h3>
+            <div className="flex flex-col gap-3">
+              {depAcoes.sort((a, b) => (b.data || "").localeCompare(a.data || "")).map(a => (
+                <div key={a.id} className="flex gap-3">
+                  <div className="flex flex-col items-center">
+                    <div className="w-2.5 h-2.5 rounded-full" style={{ background: a.status === "Concluída" ? "var(--green-500)" : "var(--blue-600)" }} />
+                    <div className="flex-1 w-px" style={{ background: "var(--border)" }} />
+                  </div>
+                  <div className="flex-1 pb-3">
+                    <p className="text-xs font-semibold">{a.titulo}</p>
+                    <div className="flex gap-2 mt-0.5">
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{a.data}</span>
+                      <span className={`text-[10px] px-1.5 rounded-full ${badgeAcaoDep(a.status)}`}>{a.status}</span>
+                    </div>
+                    {a.descricao && <p className="text-[10px] mt-1" style={{ color: "var(--ink-500)" }}>{a.descricao}</p>}
+                    {a.valor > 0 && <p className="text-[10px] mt-1 font-medium" style={{ color: "var(--green-500)" }}>R$ {Number(a.valor).toLocaleString("pt-BR")}</p>}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Propostas */}
+        {depProps.length > 0 && (
+          <div className="cc-card mx-4 mt-3 p-4">
+            <h3 className="cc-display text-sm font-semibold mb-3">Propostas</h3>
+            <div className="flex flex-col gap-2">
+              {depProps.sort((a, b) => (b.dataApresentacao || "").localeCompare(a.dataApresentacao || "")).map(p => (
+                <div key={p.id} className="p-3 rounded-xl" style={{ background: "var(--paper)" }}>
+                  <div className="flex justify-between items-start">
+                    <p className="text-xs font-semibold flex-1">{p.titulo}</p>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ml-2 whitespace-nowrap ${badgePropDep(p.status)}`}>{p.status}</span>
+                  </div>
+                  <p className="text-[10px] mt-1" style={{ color: "var(--ink-500)" }}>{p.area} • {p.dataApresentacao}</p>
+                  {p.descricao && <p className="text-[10px] mt-1" style={{ color: "var(--ink-500)" }}>{p.descricao}</p>}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Contato */}
+        <div className="cc-card mx-4 mt-3 mb-4 p-4">
+          <h3 className="cc-display text-sm font-semibold mb-3">Contato</h3>
+          <div className="flex flex-col gap-2">
+            {dep.email && <p className="text-xs flex items-center gap-2"><Send size={12} style={{ color: "var(--blue-600)" }} /> {dep.email}</p>}
+            {dep.telefone && <p className="text-xs flex items-center gap-2"><Phone size={12} style={{ color: "var(--blue-600)" }} /> {dep.telefone}</p>}
+            {dep.instagram && <p className="text-xs flex items-center gap-2"><Instagram size={12} style={{ color: "var(--blue-600)" }} /> {dep.instagram}</p>}
+            {dep.facebook && <p className="text-xs flex items-center gap-2"><Globe size={12} style={{ color: "var(--blue-600)" }} /> {dep.facebook}</p>}
+          </div>
+          <p className="text-[9px] mt-4 text-center" style={{ color: "var(--ink-300)" }}>Gerado por CONecta Campanha • {CIDADE_REDUTO}</p>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- DETALHE DO DEPUTADO ----
+  if (subView === "detalhe" && selecionado) {
+    const dep = deputados.find(d => d.id === selecionado.id) || selecionado;
+    const depAcoes = acoes.filter(a => a.deputadoId === dep.id).sort((a, b) => (b.data || "").localeCompare(a.data || ""));
+    const depProps = propostas.filter(p => p.deputadoId === dep.id).sort((a, b) => (b.dataApresentacao || "").localeCompare(a.dataApresentacao || ""));
+    const tabs = [
+      { key: "perfil", label: "Perfil", icon: Users },
+      { key: "acoes", label: "Ações", icon: CheckSquare },
+      { key: "propostas", label: "Propostas", icon: FileText },
+      { key: "pagina", label: "Página", icon: Globe },
+    ];
+
+    return (
+      <div className="flex flex-col gap-4">
+        <button onClick={() => { setSubView("lista"); setSelecionado(null); setDetalheTab("perfil"); }} className="flex items-center gap-1 text-sm font-medium" style={{ color: "var(--blue-600)" }}>
+          <ArrowLeft size={16} /> Voltar
+        </button>
+
+        {/* Header deputado */}
+        <div className="cc-card p-4 flex items-center gap-4">
+          {dep.foto ? (
+            <img src={dep.foto} alt={dep.nome} className="w-14 h-14 rounded-full object-cover" />
+          ) : (
+            <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+              {dep.nome?.charAt(0)}
+            </div>
+          )}
+          <div className="flex-1">
+            <h3 className="cc-display font-semibold text-base">{dep.nome}</h3>
+            <p className="text-xs" style={{ color: "var(--ink-500)" }}>{dep.cargo} • {dep.partido} • {dep.estado}</p>
+          </div>
+          <div className="flex gap-1">
+            <button onClick={() => gerarPDF(dep)} className="p-2 rounded-lg" style={{ background: "#E6F7EF" }}><Download size={16} style={{ color: "var(--green-500)" }} /></button>
+            <button onClick={() => compartilhar(dep)} className="p-2 rounded-lg" style={{ background: "#EAF1FE" }}><Share2 size={16} style={{ color: "var(--blue-600)" }} /></button>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <div className="flex gap-1 overflow-x-auto">
+          {tabs.map(t => {
+            const Icon = t.icon;
+            const active = detalheTab === t.key;
+            return (
+              <button key={t.key} onClick={() => setDetalheTab(t.key)}
+                className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium whitespace-nowrap"
+                style={{ background: active ? "#EAF1FE" : "transparent", color: active ? "var(--blue-600)" : "var(--ink-500)" }}>
+                <Icon size={14} />{t.label}
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Tab: Perfil */}
+        {detalheTab === "perfil" && (
+          <div className="flex flex-col gap-3">
+            <div className="cc-card p-4">
+              <h4 className="text-xs font-semibold mb-2">Informações</h4>
+              <div className="grid grid-cols-2 gap-y-2 text-xs">
+                <span style={{ color: "var(--ink-500)" }}>Cargo</span><span>{dep.cargo}</span>
+                <span style={{ color: "var(--ink-500)" }}>Partido</span><span>{dep.partido}</span>
+                <span style={{ color: "var(--ink-500)" }}>Estado</span><span>{dep.estado}</span>
+                <span style={{ color: "var(--ink-500)" }}>Municípios</span><span>{dep.municipios}</span>
+                {dep.mandatoInicio && <><span style={{ color: "var(--ink-500)" }}>Mandato</span><span>{dep.mandatoInicio} a {dep.mandatoFim || "atual"}</span></>}
+                {dep.email && <><span style={{ color: "var(--ink-500)" }}>E-mail</span><span>{dep.email}</span></>}
+                {dep.telefone && <><span style={{ color: "var(--ink-500)" }}>Telefone</span><span>{dep.telefone}</span></>}
+              </div>
+            </div>
+            {dep.biografia && (
+              <div className="cc-card p-4">
+                <h4 className="text-xs font-semibold mb-2">Biografia</h4>
+                <p className="text-xs leading-relaxed" style={{ color: "var(--ink-500)" }}>{dep.biografia}</p>
+              </div>
+            )}
+            {/* Dashboard rápido */}
+            <div className="grid grid-cols-2 gap-2">
+              <StatCard label="Ações" value={depAcoes.length} sub={`${depAcoes.filter(a => a.status === "Concluída").length} concluídas`} tone="blue" />
+              <StatCard label="Propostas" value={depProps.length} sub={`${depProps.filter(p => p.status === "Aprovada" || p.status === "Executada" || p.status === "Concluída").length} aprovadas`} tone="green" />
+              <StatCard label="Recursos" value={`R$ ${depAcoes.reduce((s, a) => s + (Number(a.valor) || 0), 0).toLocaleString("pt-BR")}`} tone="amber" />
+              <StatCard label="Áreas" value={new Set(depAcoes.map(a => a.categoria)).size} tone="teal" />
+            </div>
+          </div>
+        )}
+
+        {/* Tab: Ações */}
+        {detalheTab === "acoes" && (
+          <div className="flex flex-col gap-3">
+            <button onClick={() => { setFormAcao({ ...acaoVazia }); setEditAcao(null); setShowAcaoForm(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white w-full justify-center"
+              style={{ background: "var(--blue-600)" }}><Plus size={16} /> Nova Ação</button>
+            {formAcaoUI}
+            {depAcoes.map(a => (
+              <div key={a.id} className="cc-card p-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">{a.titulo}</p>
+                    <div className="flex gap-2 mt-0.5 flex-wrap">
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{a.categoria}</span>
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{a.data}</span>
+                      <span className={`text-[10px] px-1.5 rounded-full ${badgeAcaoDep(a.status)}`}>{a.status}</span>
+                    </div>
+                    {a.descricao && <p className="text-[10px] mt-1" style={{ color: "var(--ink-500)" }}>{a.descricao}</p>}
+                    {a.valor > 0 && <p className="text-[10px] mt-1 font-medium" style={{ color: "var(--green-500)" }}>R$ {Number(a.valor).toLocaleString("pt-BR")}</p>}
+                  </div>
+                  <div className="flex gap-1 ml-2">
+                    <button onClick={() => { setFormAcao({ ...a }); setEditAcao(a); setShowAcaoForm(true); }} className="p-1"><Pencil size={12} style={{ color: "var(--blue-600)" }} /></button>
+                    <button onClick={() => excluirAcao(a.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {depAcoes.length === 0 && !showAcaoForm && <p className="text-sm text-center py-8" style={{ color: "var(--ink-300)" }}>Nenhuma ação cadastrada</p>}
+          </div>
+        )}
+
+        {/* Tab: Propostas */}
+        {detalheTab === "propostas" && (
+          <div className="flex flex-col gap-3">
+            <button onClick={() => { setFormProp({ ...propVazia }); setEditProp(null); setShowPropForm(true); }}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-semibold text-white w-full justify-center"
+              style={{ background: "var(--blue-600)" }}><Plus size={16} /> Nova Proposta</button>
+            {formPropUI}
+            {depProps.map(p => (
+              <div key={p.id} className="cc-card p-3">
+                <div className="flex justify-between items-start">
+                  <div className="flex-1">
+                    <p className="text-sm font-semibold">{p.titulo}</p>
+                    <div className="flex gap-2 mt-0.5 flex-wrap">
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{p.area}</span>
+                      <span className="text-[10px]" style={{ color: "var(--ink-500)" }}>{p.dataApresentacao}</span>
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${badgePropDep(p.status)}`}>{p.status}</span>
+                    </div>
+                    {p.descricao && <p className="text-[10px] mt-1" style={{ color: "var(--ink-500)" }}>{p.descricao}</p>}
+                    {p.impacto && <p className="text-[10px] mt-1 italic" style={{ color: "var(--blue-600)" }}>Impacto: {p.impacto}</p>}
+                  </div>
+                  <div className="flex gap-1 ml-2">
+                    <button onClick={() => { setFormProp({ ...p }); setEditProp(p); setShowPropForm(true); }} className="p-1"><Pencil size={12} style={{ color: "var(--blue-600)" }} /></button>
+                    <button onClick={() => excluirProposta(p.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                  </div>
+                </div>
+              </div>
+            ))}
+            {depProps.length === 0 && !showPropForm && <p className="text-sm text-center py-8" style={{ color: "var(--ink-300)" }}>Nenhuma proposta cadastrada</p>}
+          </div>
+        )}
+
+        {/* Tab: Página pública */}
+        {detalheTab === "pagina" && (
+          <div className="flex flex-col gap-3">
+            <div className="flex gap-2">
+              <button onClick={() => gerarPDF(dep)} className="flex-1 flex items-center gap-2 justify-center py-2.5 rounded-xl text-xs font-semibold text-white" style={{ background: "var(--green-500)" }}>
+                <Download size={14} /> Gerar PDF
+              </button>
+              <button onClick={() => compartilhar(dep)} className="flex-1 flex items-center gap-2 justify-center py-2.5 rounded-xl text-xs font-semibold text-white" style={{ background: "var(--blue-600)" }}>
+                <Share2 size={14} /> Compartilhar
+              </button>
+            </div>
+            <PaginaPublica dep={dep} />
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ---- LISTA DE DEPUTADOS ----
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between">
+        <h3 className="cc-display font-semibold text-base">Propostas de Deputados</h3>
+        <button onClick={() => { setFormDep(depVazio); setEditDep(null); setShowForm(true); }}
+          className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-semibold text-white" style={{ background: "var(--blue-600)" }}>
+          <Plus size={14} /> Deputado
+        </button>
+      </div>
+
+      <div className="relative">
+        <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-300)" }} />
+        <input placeholder="Buscar deputado..." className={inputCls} style={{ ...inputStyle, paddingLeft: "2.2rem" }} value={busca} onChange={e => setBusca(e.target.value)} />
+      </div>
+
+      {formDeputadoUI}
+
+      {/* Stats */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display text-lg font-bold" style={{ color: "var(--blue-600)" }}>{deputados.length}</p>
+          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Deputados</p>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display text-lg font-bold" style={{ color: "var(--green-500)" }}>{acoes.length}</p>
+          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Ações</p>
+        </div>
+        <div className="cc-card p-3 text-center">
+          <p className="cc-display text-lg font-bold" style={{ color: "var(--amber-500)" }}>{propostas.length}</p>
+          <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Propostas</p>
+        </div>
+      </div>
+
+      {/* Lista */}
+      {depsFiltrados.map(dep => {
+        const depAcoes = acoes.filter(a => a.deputadoId === dep.id);
+        const depProps = propostas.filter(p => p.deputadoId === dep.id);
+        return (
+          <div key={dep.id} className="cc-card p-4">
+            <div className="flex items-center gap-3">
+              {dep.foto ? (
+                <img src={dep.foto} alt={dep.nome} className="w-12 h-12 rounded-full object-cover" />
+              ) : (
+                <div className="w-12 h-12 rounded-full flex items-center justify-center text-lg font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+                  {dep.nome?.charAt(0)}
+                </div>
+              )}
+              <div className="flex-1" onClick={() => { setSelecionado(dep); setSubView("detalhe"); setDetalheTab("perfil"); }}>
+                <p className="text-sm font-semibold">{dep.nome}</p>
+                <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{dep.cargo} • {dep.partido} • {dep.estado}</p>
+                <div className="flex gap-3 mt-1">
+                  <span className="text-[10px]" style={{ color: "var(--blue-600)" }}>{depAcoes.length} ações</span>
+                  <span className="text-[10px]" style={{ color: "var(--green-500)" }}>{depProps.length} propostas</span>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1">
+                <button onClick={() => iniciarEdicaoDep(dep)} className="p-1"><Pencil size={14} style={{ color: "var(--blue-600)" }} /></button>
+                <button onClick={() => excluirDeputado(dep.id)} className="p-1"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+
+      {depsFiltrados.length === 0 && !showForm && (
+        <div className="cc-card p-8 text-center">
+          <Landmark size={32} className="mx-auto mb-3" style={{ color: "var(--ink-300)" }} />
+          <p className="text-sm font-semibold" style={{ color: "var(--ink-500)" }}>Nenhum deputado cadastrado</p>
+          <p className="text-xs mt-1" style={{ color: "var(--ink-300)" }}>Cadastre deputados para gerenciar ações e propostas</p>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function EmBreveView({ label }) {
   return (
     <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
@@ -2643,6 +3241,9 @@ export default function App() {
   const cabosTable = useSupabaseTable("cabos_eleitorais", []);
   const fiscaisTable = useSupabaseTable("fiscais_diad", []);
   const historicoTable = useSupabaseTable("historico_contato", []);
+  const deputadosTable = useSupabaseTable("deputados", []);
+  const depAcoesTable = useSupabaseTable("deputado_acoes", []);
+  const depPropostasTable = useSupabaseTable("deputado_propostas", []);
 
   const eleitores = eleitoresTable.items;
   const setEleitores = eleitoresTable.setItems;
@@ -2715,6 +3316,7 @@ export default function App() {
         {view === "diad" && <DiaDView eleitores={eleitores} cabos={cabos} fiscaisTable={fiscaisTable} />}
         {view === "historico" && <HistoricoContatoView eleitores={eleitores} setEleitores={setEleitores} eleitoresTable={eleitoresTable} historicoTable={historicoTable} />}
         {view === "exportar" && <ExportarView eleitores={eleitores} cabos={cabos} liderancas={liderancas} />}
+        {view === "deputados" && <DeputadosView deputadosTable={deputadosTable} acoesTable={depAcoesTable} propostasTable={depPropostasTable} />}
         {current && !current.active && <EmBreveView label={current.label} />}
       </main>
 
