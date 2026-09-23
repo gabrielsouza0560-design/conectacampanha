@@ -468,6 +468,7 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
   const [q, setQ] = useState(""); const [fNivel, setFNivel] = useState(""); const [fCat, setFCat] = useState(""); const [fCont, setFCont] = useState("");
   const [avisar, toastEl] = useToast();
   const [lote, setLote] = useState(false);
+  const [envio, setEnvio] = useState(false);
   const s = statsEle(rows);
   const lista = useMemo(() => rows.filter((r) => {
     if (q && !norm([r.nome, r.telefone, r.cpf, r.lideranca, r.observacoes].join(" ")).includes(norm(q))) return false;
@@ -495,13 +496,13 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
           <p className="text-sm" style={{ color: "var(--ink-500)" }}>{def.sub}</p>
         </div>
         <div className="flex gap-2">
-          {onImportar && <button onClick={onImportar} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: "var(--border)", background: "var(--surface)" }}><Upload size={15} /> Importar planilha</button>}
-          <button onClick={() => setLote(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: "var(--blue-600)", color: "var(--blue-600)", background: "var(--surface)" }}>
-            <Users size={15} /> Vários eleitores
+          {onImportar && <button onClick={onImportar} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--border)", background: "var(--surface)" }}><Upload size={15} /> Importar<span className="hidden sm:inline"> planilha</span></button>}
+          <button onClick={() => setLote(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--blue-600)", color: "var(--blue-600)", background: "var(--surface)" }}>
+            <Users size={15} /> Vários<span className="hidden sm:inline"> eleitores</span>
           </button>
           <button onClick={focarNovaLinha}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
-            <Plus size={16} /> Novo eleitor
+            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white whitespace-nowrap" style={{ background: "var(--blue-600)" }}>
+            <Plus size={16} /> Novo<span className="hidden sm:inline"> eleitor</span>
           </button>
         </div>
       </div>
@@ -540,6 +541,9 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
       )}
 
       <PainelMensagem chave={def.key} rotulo="desta lista" msgKV={msgKV} avisar={avisar} />
+      <button onClick={() => setEnvio(true)} className="flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-white" style={{ background: "#1F9D55" }}>
+        <Send size={16} /> Enviar mensagens no WhatsApp
+      </button>
 
       <BarraBusca value={q} onChange={setQ} placeholder="Buscar por nome, telefone, CPF…">
         <Filtro value={fNivel} onChange={setFNivel} opcoes={NIVEL_VOTO} vazio="Nível de votação" />
@@ -576,10 +580,80 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
         total={`${lista.length} eleitores · Confirm: ${lista.filter((r) => r.status === "Confirmado").length} · Pend: ${lista.filter((r) => r.status === "Pendente").length} · Indec: ${lista.filter((r) => r.status === "Indeciso").length} · Enviado: ${lista.filter((r) => r.contatoStatus === "Enviado").length}`}
       />
       <datalist id="dl-lid-grade">{liderancas.map((l) => <option key={l.id} value={l.nome} />)}</datalist>
+      {envio && <EnvioWhatsApp titulo={def.tab} pessoas={lista} cfg={msgKV.data?.[def.key]}
+        onMarcar={(r) => table.update(r.id, { contatoStatus: "Enviado" })} onClose={() => setEnvio(false)} avisar={avisar} />}
       {lote && <CadastroLote def={def} table={table} liderancas={liderancas}
         onClose={(m) => { setLote(false); if (m) avisar(m); }} />}
       {toastEl}
     </>
+  );
+}
+
+// ===========================================================================
+// ENVIO NO WHATSAPP — um por um (abre a conversa pronta, marca Enviado, próximo)
+// ===========================================================================
+export function EnvioWhatsApp({ titulo, pessoas, cfg, onMarcar, onClose, avisar }) {
+  const [soPendentes, setSoPendentes] = useState(true);
+  const [pos, setPos] = useState(0);
+  const [feitos, setFeitos] = useState(0);
+  const comTel = pessoas.filter((r) => waNumber(r.telefone));
+  const semTel = pessoas.length - comTel.length;
+  const fila = useMemo(() => comTel.filter((r) => !soPendentes || r.contatoStatus !== "Enviado"),
+    // fila fixa enquanto a janela está aberta (não "pula" ao marcar)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [soPendentes, pessoas.length]);
+  const atual = fila[pos];
+  const msg = atual ? montarMensagem(cfg, atual.nome) : "";
+  const msgGeral = montarMensagem(cfg, "").replace(/Olá\s*!/, "Olá!").replace(/\s+!/, "!");
+  const semMensagem = !cfg?.mensagem;
+
+  async function abrir() {
+    window.open(waLink(atual.telefone, msg), "_blank", "noopener");
+    if (atual.contatoStatus !== "Enviado") await onMarcar(atual);
+    setFeitos((f) => f + 1);
+    setPos((p) => p + 1);
+  }
+
+  return (
+    <Folha title={`Enviar mensagens — ${titulo}`} onClose={onClose}>
+      <div className="flex flex-col gap-4 text-sm">
+        {semMensagem && <p className="font-semibold" style={{ color: "var(--red-500)" }}>Escreva e salve a “Mensagem do WhatsApp desta lista” antes de enviar.</p>}
+
+        <div className="rounded-lg border p-3 flex flex-col gap-2" style={{ borderColor: "var(--border)" }}>
+          <p className="font-semibold">Uma pessoa por vez</p>
+          <label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={soPendentes} onChange={(e) => { setSoPendentes(e.target.checked); setPos(0); }} /> Só quem ainda não recebeu</label>
+          {atual ? (
+            <>
+              <p className="text-xs tabular-nums" style={{ color: "var(--ink-500)" }}>{pos + 1} de {fila.length}{feitos ? ` · ${feitos} enviados agora` : ""}</p>
+              <div className="flex items-center justify-between gap-2">
+                <div><p className="font-bold text-base">{atual.nome}</p><p className="text-xs" style={{ color: "var(--ink-500)" }}>{fmtTel(atual.telefone)}</p></div>
+                <button onClick={() => setPos((p) => p + 1)} className="text-xs underline" style={{ color: "var(--ink-500)" }}>Pular</button>
+              </div>
+              <div className="text-xs whitespace-pre-wrap rounded-lg border p-2 max-h-32 overflow-auto cc-scroll" style={{ borderColor: "var(--border)", background: "var(--paper)" }}>{msg}</div>
+              <button onClick={abrir} disabled={semMensagem} className="flex items-center justify-center gap-2 py-3 rounded-lg font-semibold text-white disabled:opacity-50" style={{ background: "#1F9D55" }}>
+                <Send size={16} /> Abrir WhatsApp de {atual.nome.split(" ")[0]}
+              </button>
+              <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>No WhatsApp, toque em enviar ➤ e volte aqui para o próximo. A pessoa já fica marcada como “Enviado”.</p>
+            </>
+          ) : (
+            <p className="text-sm" style={{ color: "var(--ink-500)" }}>
+              {fila.length ? `Pronto! ${feitos} mensagens abertas.` : "Ninguém com telefone para enviar nesta lista."}
+            </p>
+          )}
+          {!!semTel && <p className="text-xs" style={{ color: "var(--ink-500)" }}>{semTel} {semTel === 1 ? "pessoa está" : "pessoas estão"} sem telefone e {semTel === 1 ? "fica" : "ficam"} de fora.</p>}
+        </div>
+
+        <div className="rounded-lg border p-3 flex flex-col gap-2" style={{ borderColor: "var(--border)" }}>
+          <p className="font-semibold">Mandar em um grupo ou para vários de uma vez</p>
+          <p className="text-xs" style={{ color: "var(--ink-500)" }}>Abre o WhatsApp para você escolher o grupo (ou vários contatos) e enviar a mensagem sem o nome da pessoa.</p>
+          <div className="flex gap-2 flex-wrap">
+            <a href={`https://wa.me/?text=${encodeURIComponent(msgGeral)}`} target="_blank" rel="noopener noreferrer"
+              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold text-white whitespace-nowrap" style={{ background: "#1F9D55" }}><Send size={15} /> Escolher grupo</a>
+            <button onClick={() => copiar(msgGeral, avisar)} className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-lg font-semibold border whitespace-nowrap" style={{ borderColor: "var(--border)" }}><Copy size={15} /> Copiar mensagem</button>
+          </div>
+        </div>
+      </div>
+    </Folha>
   );
 }
 
