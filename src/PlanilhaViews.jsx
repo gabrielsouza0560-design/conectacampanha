@@ -5,7 +5,7 @@
 import React, { useState, useMemo, useRef, useEffect } from "react";
 import {
   Search, Plus, X, Pencil, Trash2, Copy, Send, Upload, Download, CheckCircle2,
-  ChevronDown, ChevronUp, MessageCircle,
+  ChevronDown, ChevronUp, MessageCircle, Users,
 } from "lucide-react";
 
 export const NIVEL_LID = ["Cabo Eleitoral", "Liderança", "Apoiador"];
@@ -467,6 +467,7 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
   const rows = table.items;
   const [q, setQ] = useState(""); const [fNivel, setFNivel] = useState(""); const [fCat, setFCat] = useState(""); const [fCont, setFCont] = useState("");
   const [avisar, toastEl] = useToast();
+  const [lote, setLote] = useState(false);
   const s = statsEle(rows);
   const lista = useMemo(() => rows.filter((r) => {
     if (q && !norm([r.nome, r.telefone, r.cpf, r.lideranca, r.observacoes].join(" ")).includes(norm(q))) return false;
@@ -495,6 +496,9 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
         </div>
         <div className="flex gap-2">
           {onImportar && <button onClick={onImportar} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: "var(--border)", background: "var(--surface)" }}><Upload size={15} /> Importar planilha</button>}
+          <button onClick={() => setLote(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border" style={{ borderColor: "var(--blue-600)", color: "var(--blue-600)", background: "var(--surface)" }}>
+            <Users size={15} /> Vários eleitores
+          </button>
           <button onClick={focarNovaLinha}
             className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
             <Plus size={16} /> Novo eleitor
@@ -572,8 +576,137 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
         total={`${lista.length} eleitores · Confirm: ${lista.filter((r) => r.status === "Confirmado").length} · Pend: ${lista.filter((r) => r.status === "Pendente").length} · Indec: ${lista.filter((r) => r.status === "Indeciso").length} · Enviado: ${lista.filter((r) => r.contatoStatus === "Enviado").length}`}
       />
       <datalist id="dl-lid-grade">{liderancas.map((l) => <option key={l.id} value={l.nome} />)}</datalist>
+      {lote && <CadastroLote def={def} table={table} liderancas={liderancas}
+        onClose={(m) => { setLote(false); if (m) avisar(m); }} />}
       {toastEl}
     </>
+  );
+}
+
+// ===========================================================================
+// CADASTRO EM LOTE — cola/digita até 200 eleitores de uma vez
+// ===========================================================================
+export const MAX_LOTE = 200;
+function parseLinhaLote(linha) {
+  let partes = linha.split(/\t|;/).map((p) => p.trim()).filter(Boolean);
+  if (partes.length === 1) {
+    // "Maria Silva 44 99999-0000" → separa o número do fim
+    const m = partes[0].match(/^(.*?)[\s,\-–]*([\d()\s.\-+]{8,})$/);
+    if (m && digits(m[2]).length >= 8) partes = [m[1].trim(), m[2].trim()];
+    else if (partes[0].includes(",")) partes = partes[0].split(",").map((p) => p.trim()).filter(Boolean);
+  }
+  const nome = (partes.shift() || "").replace(/\s+/g, " ");
+  let telefone = "", cpf = "";
+  for (const p of partes) {
+    const d = digits(p);
+    if (!d) continue;
+    if (/[.\-]\d{2}$/.test(p) && /\d{3}\.\d{3}\.\d{3}/.test(p)) { cpf = cpf || d; continue; }
+    if (!telefone) telefone = d; else if (!cpf) cpf = d;
+  }
+  return { nome, telefone: telefone ? fmtTel(telefone) : "", cpf: cpf ? fmtCpf(cpf) : "" };
+}
+
+function CadastroLote({ def, table, liderancas, onClose }) {
+  const [texto, setTexto] = useState("");
+  const [status, setStatus] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [genero, setGenero] = useState("");
+  const [lideranca, setLideranca] = useState("");
+  const [contatoStatus, setContatoStatus] = useState("");
+  const [cargoEstadual, setCargoEstadual] = useState(true);
+  const [progresso, setProgresso] = useState(null);
+  const [erro, setErro] = useState("");
+
+  const analise = useMemo(() => {
+    const linhas = texto.split(/\r?\n/).map((l, i) => [l.trim(), i + 1]).filter(([l]) => l);
+    const ja = new Set(table.items.map((r) => norm(r.nome) + "|" + digits(r.telefone)));
+    const novos = [], dup = [], invalidos = [];
+    linhas.forEach(([l, n]) => {
+      const r = parseLinhaLote(l);
+      if (!r.nome || r.nome.length < 2 || /^[\d\s().\-+]+$/.test(r.nome)) { invalidos.push(n); return; }
+      const sig = norm(r.nome) + "|" + digits(r.telefone);
+      if (ja.has(sig)) { dup.push(r); return; }
+      ja.add(sig); novos.push(r);
+    });
+    return { total: linhas.length, novos, dup, invalidos };
+  }, [texto, table.items]);
+
+  const excede = analise.novos.length > MAX_LOTE;
+
+  async function salvar() {
+    setErro("");
+    const recs = analise.novos.map((r) => {
+      const dados = { nome: r.nome, cpf: r.cpf, telefone: r.telefone, genero, status, categoria: categoria === "Sem categoria" ? "" : categoria,
+        contatoStatus, lideranca: lideranca.trim(), observacoes: "" };
+      if (def.cargos) dados.cargos = cargoEstadual && status ? { estadual: status } : {};
+      return dados;
+    });
+    let ok = 0;
+    setProgresso({ ok, total: recs.length });
+    for (let i = 0; i < recs.length; i += 50) {
+      const parte = recs.slice(i, i + 50);
+      const res = table.insertMany ? await table.insertMany(parte) : await Promise.all(parte.map((r) => table.insert(r)));
+      if (!res || (Array.isArray(res) && res.some((x) => !x))) {
+        setErro(`${ok} cadastrados, mas houve erro no restante. Tente de novo: quem já entrou será ignorado.`);
+        setProgresso(null); return;
+      }
+      ok += parte.length; setProgresso({ ok, total: recs.length });
+    }
+    onClose(`${ok} eleitores cadastrados`);
+  }
+
+  return (
+    <Folha title={`Cadastrar vários eleitores — ${def.tab}`} onClose={() => !progresso && onClose()}>
+      <div className="flex flex-col gap-4 text-sm">
+        <p style={{ color: "var(--ink-500)" }}>
+          Um eleitor por linha, até <b>{MAX_LOTE}</b> de uma vez. Formato: <b>Nome; Telefone; CPF</b> (telefone e CPF são opcionais).
+          Também dá para colar colunas copiadas do Excel.
+        </p>
+        <textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={9} autoFocus
+          className={inputCls + " font-mono text-[13px] leading-6"} style={inputStyle}
+          placeholder={"Maria da Silva; (44) 99999-0000; 000.000.000-00\nJoão Pereira; 44988887777\nAna Souza"} />
+        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs tabular-nums">
+          <span className="font-semibold" style={{ color: excede ? "var(--red-500)" : "var(--blue-600)" }}>{analise.novos.length}/{MAX_LOTE} novos</span>
+          {!!analise.dup.length && <span style={{ color: "var(--ink-500)" }}>{analise.dup.length} já cadastrados (serão ignorados)</span>}
+          {!!analise.invalidos.length && <span style={{ color: "var(--ink-500)" }}>Linhas sem nome ignoradas: {analise.invalidos.slice(0, 8).join(", ")}{analise.invalidos.length > 8 ? "…" : ""}</span>}
+        </div>
+
+        <div>
+          <p className="font-semibold text-xs mb-2">Aplicar a todos (opcional)</p>
+          <div className="grid sm:grid-cols-2 gap-3">
+            <Campo label="Nível de votação"><Sel value={status} onChange={setStatus} opcoes={NIVEL_VOTO} /></Campo>
+            <Campo label="Categoria"><Sel value={categoria} onChange={setCategoria} opcoes={CATEGORIAS_ELE} /></Campo>
+            <Campo label="Gênero"><Sel value={genero} onChange={setGenero} opcoes={GENERO} /></Campo>
+            <Campo label="Status do contato"><Sel value={contatoStatus} onChange={setContatoStatus} opcoes={STATUS_CONTATO} /></Campo>
+            <Campo label="Indicado por" full>
+              <input className={inputCls} style={inputStyle} value={lideranca} onChange={(e) => setLideranca(e.target.value)} list="dl-lid-lote" placeholder="Nome da liderança" />
+              <datalist id="dl-lid-lote">{liderancas.map((l) => <option key={l.id} value={l.nome} />)}</datalist>
+            </Campo>
+          </div>
+          {def.cargos && status && (
+            <label className="flex items-center gap-2 mt-3 text-xs"><input type="checkbox" checked={cargoEstadual} onChange={(e) => setCargoEstadual(e.target.checked)} /> Usar o mesmo nível para Dep. Estadual</label>
+          )}
+        </div>
+
+        {!!analise.novos.length && (
+          <div className="border rounded-lg max-h-48 overflow-y-auto cc-scroll" style={{ borderColor: "var(--border)" }}>
+            <table className="w-full text-xs tabular-nums">
+              <thead className="sticky top-0" style={{ background: "var(--surface)" }}><tr style={{ color: "var(--ink-500)" }}><th className="text-left px-2 py-1.5">Nº</th><th className="text-left">Nome</th><th className="text-left">Telefone</th><th className="text-left">CPF</th></tr></thead>
+              <tbody>{analise.novos.slice(0, MAX_LOTE).map((r, i) => (
+                <tr key={i} className="border-t" style={{ borderColor: "var(--border)" }}><td className="px-2 py-1">{i + 1}</td><td>{r.nome}</td><td>{r.telefone}</td><td>{r.cpf}</td></tr>
+              ))}</tbody>
+            </table>
+          </div>
+        )}
+
+        {excede && <p className="text-sm font-semibold" style={{ color: "var(--red-500)" }}>Máximo de {MAX_LOTE} por vez. Remova {analise.novos.length - MAX_LOTE} linha(s).</p>}
+        {erro && <p className="text-sm font-semibold" style={{ color: "var(--red-500)" }}>{erro}</p>}
+        <button onClick={salvar} disabled={!!progresso || excede || !analise.novos.length}
+          className="py-3 rounded-lg font-semibold text-white disabled:opacity-60" style={{ background: "var(--blue-600)" }}>
+          {progresso ? `Cadastrando… ${progresso.ok}/${progresso.total}` : `Cadastrar ${analise.novos.length} eleitor${analise.novos.length === 1 ? "" : "es"}`}
+        </button>
+      </div>
+    </Folha>
   );
 }
 
