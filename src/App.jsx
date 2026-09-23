@@ -2,6 +2,10 @@ import React, { useState, useMemo, useCallback, useRef } from "react";
 import { useSupabaseTable, useSupabaseKV } from "./useSupabase";
 import InstallPrompt from "./InstallPrompt";
 import {
+  LiderancasPlanilhaView, EleitoresPlanilhaView, MensagensPlanilhaView,
+  ImportarPlanilha, exportarPlanilha,
+} from "./PlanilhaViews";
+import {
   LayoutDashboard, Users, Crown, MapPin,
   ClipboardList, Calendar as CalendarIcon, PartyPopper, Map,
   BarChart3, MessageCircle, CheckSquare, FileText, Printer,
@@ -189,6 +193,7 @@ const chartData = [
 const BOTTOM_TABS = [
   { key: "dashboard", label: "Início", icon: LayoutDashboard },
   { key: "eleitores", label: "Eleitores", icon: Users },
+  { key: "liderancas", label: "Lideranças", icon: Crown },
   { key: "mensagens", label: "Mensagens", icon: Send },
   { key: "relatorios", label: "Votos", icon: Vote },
 ];
@@ -200,7 +205,6 @@ const MORE_ITEMS = [
   { key: "visitascasa", label: "Visita Casa", icon: Home, active: true },
   { key: "agenda", label: "Agenda", icon: CalendarIcon, active: true },
   { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
-  { key: "liderancas", label: "Lideranças", icon: Crown, active: true },
   { key: "gastos", label: "Gastos", icon: Wallet, active: true },
   { key: "material", label: "Material", icon: Package, active: true },
   { key: "visitas", label: "Visitas", icon: MapPin, active: true },
@@ -597,168 +601,41 @@ function FormEleitor({ data, liderancas, onSave, cargoAtual }) {
   );
 }
 
-const NIVEIS_LIDERANCA = ["Cabo Eleitoral", "Liderança", "Apoiador"];
-const STATUS_LIDERANCA = ["Ativa", "Inativa", "Pausada"];
-const NIVEL_CORES = {
-  "Cabo Eleitoral": { bg: "#E6F7EF", fg: "#1E8E5F" },
-  "Liderança": { bg: "#EAF1FE", fg: "var(--blue-600)" },
-  "Apoiador": { bg: "#FFF3DC", fg: "#9A6300" },
-};
-const STATUS_LID_CORES = {
-  "Ativa": { bg: "#E6F7EF", fg: "#1E8E5F" },
-  "Inativa": { bg: "#FDECEC", fg: "#C0392B" },
-  "Pausada": { bg: "#F1F1F4", fg: "#6B6B7B" },
-};
-const MSG_LIDERANCA_PADRAO = "Olá {nome}! Aqui é da campanha do Adriano José em Ivatuba. Contamos com seu apoio!\nPeço licença para um pedido especial por Ivatuba.\n\nO Deputado Adriano José tem mostrado, com trabalho e presença, que Ivatuba pode contar com ele.\n\nNão é sobre lado A ou B. É sobre reconhecer quem esteve presente e pode continuar ajudando nossa cidade.\n\nSe você ainda não decidiu seu voto, pense com carinho no Adriano José.\n\nADRIANO JOSÉ — 55.900\n\nConheça mais: Instagram do Adriano José (https://www.instagram.com/adrianojose)\n\nPor Ivatuba e pelo futuro da nossa cidade!";
-const LINK_LIDERANCA_PADRAO = "https://canva.link/o45mpj6omakj73m";
-
-function lerLocal(chave, padrao) {
-  try { const v = localStorage.getItem(chave); return v === null ? padrao : v; } catch (_) { return padrao; }
-}
-function gravarLocal(chave, valor) {
-  try { localStorage.setItem(chave, valor); } catch (_) {}
-}
-
-function Pill({ text, cores }) {
-  if (!text) return null;
-  const c = cores[text] || { bg: "#F1F1F4", fg: "#6B6B7B" };
-  return <span className="text-xs font-semibold px-2 py-0.5 rounded-full" style={{ background: c.bg, color: c.fg }}>{text}</span>;
-}
-
 function LiderancasView({ items, setItems, eleitores, table }) {
   const [modal, setModal] = useState(null);
-  const [busca, setBusca] = useState("");
-  const [filtroNivel, setFiltroNivel] = useState("Todos");
-  const [mostrarMsg, setMostrarMsg] = useState(false);
-  const [mensagem, setMensagemState] = useState(() => lerLocal("cc_lid_msg", MSG_LIDERANCA_PADRAO));
-  const [link, setLinkState] = useState(() => lerLocal("cc_lid_link", LINK_LIDERANCA_PADRAO));
-  const [copiado, setCopiado] = useState(null);
 
-  function setMensagem(v) { setMensagemState(v); gravarLocal("cc_lid_msg", v); }
-  function setLink(v) { setLinkState(v); gravarLocal("cc_lid_link", v); }
-
-  function openNew() {
-    setModal({ mode: "new", data: { nome: "", telefone: "", bairro: "", nivel: "Cabo Eleitoral", metaVotos: 0, status: "Ativa", responsavel: "Adriano José", observacoes: "" } });
-  }
-  function openEdit(item) { setModal({ mode: "edit", data: { nivel: "", metaVotos: 0, responsavel: "", observacoes: "", bairro: "", ...item } }); }
+  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", status: "Ativa" } }); }
+  function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
-    const dados = { ...form, metaVotos: Number(form.metaVotos) || 0 };
     if (modal.mode === "new") {
-      table.insert({ ...dados, apoiadores: 0 });
+      table.insert({ ...form, apoiadores: 0 });
     } else {
-      table.update(dados.id, dados);
+      table.update(form.id, form);
     }
     setModal(null);
   }
-  function remove(id) {
-    if (window.confirm("Excluir esta liderança?")) table.remove(id);
-  }
-
-  function textoPara(l) {
-    let t = (mensagem || "").replace(/\{nome\}/gi, l.nome || "");
-    if (link) t += "\n\nFoto/Vídeo: " + link;
-    return t;
-  }
-  function telefoneWhats(tel) {
-    const nums = (tel || "").replace(/\D/g, "");
-    if (!nums) return "";
-    return nums.startsWith("55") ? nums : "55" + nums;
-  }
-  function enviar(l) {
-    const tel = telefoneWhats(l.telefone);
-    if (!tel) return;
-    window.open(`https://wa.me/${tel}?text=${encodeURIComponent(textoPara(l))}`, "_blank");
-  }
-  function copiar(l) {
-    navigator.clipboard?.writeText(textoPara(l));
-    setCopiado(l.id);
-    setTimeout(() => setCopiado(null), 1500);
-  }
-
-  const total = items.length;
-  const metaTotal = items.reduce((s, l) => s + (Number(l.metaVotos) || 0), 0);
-  const ativas = items.filter(l => l.status === "Ativa").length;
-  const inativas = items.filter(l => l.status === "Inativa").length;
-  const pausadas = items.filter(l => l.status === "Pausada").length;
-  const porNivel = n => items.filter(l => l.nivel === n).length;
-  const semNivel = items.filter(l => !NIVEIS_LIDERANCA.includes(l.nivel)).length;
-
-  const lista = items.filter(l => {
-    if (filtroNivel !== "Todos" && (filtroNivel === "Sem nível" ? NIVEIS_LIDERANCA.includes(l.nivel) : l.nivel !== filtroNivel)) return false;
-    if (busca && !`${l.nome} ${l.telefone} ${l.bairro || ""} ${l.responsavel || ""}`.toLowerCase().includes(busca.toLowerCase())) return false;
-    return true;
-  });
+  function remove(id) { table.remove(id); }
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
-        <StatCard label="Lideranças cadastradas" value={total} sub={`${ativas} ativas`} tone="blue" />
-        <StatCard label="Meta total de votos" value={metaTotal.toLocaleString("pt-BR")} tone="green" />
-        <StatCard label="Inativas / Pausadas" value={`${inativas} / ${pausadas}`} tone="amber" />
-        <StatCard label="Sem nível" value={semNivel} tone="teal" />
-      </div>
-      <div className="grid grid-cols-3 gap-3">
-        {NIVEIS_LIDERANCA.map(n => (
-          <div key={n} className="cc-card p-3 flex items-center justify-between">
-            <Pill text={n} cores={NIVEL_CORES} />
-            <span className="cc-display font-bold">{porNivel(n)}</span>
-          </div>
-        ))}
-      </div>
-
-      <div className="cc-card p-4 flex flex-col gap-3">
-        <button onClick={() => setMostrarMsg(v => !v)} className="flex items-center justify-between text-left">
-          <span className="cc-display font-semibold text-sm flex items-center gap-2"><MessageCircle size={16} /> Mensagem do WhatsApp para lideranças</span>
-          {mostrarMsg ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-        </button>
-        {mostrarMsg && (
-          <>
-            <p className="text-xs" style={{ color: "var(--ink-500)" }}>Use <strong>{"{nome}"}</strong> para personalizar. Fica salva neste aparelho.</p>
-            <textarea value={mensagem} onChange={e => setMensagem(e.target.value)} className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 min-h-[160px] resize-y" style={{ borderColor: "var(--border)" }} />
-            <Field label="Link da foto/vídeo (opcional)">
-              <input className={inputCls} style={inputStyle} value={link} onChange={e => setLink(e.target.value)} placeholder="https://..." />
-            </Field>
-          </>
-        )}
-      </div>
-
-      <div className="flex flex-col sm:flex-row gap-2 sm:items-center sm:justify-between">
-        <div className="flex gap-2 flex-1">
-          <div className="relative flex-1">
-            <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-500)" }} />
-            <input value={busca} onChange={e => setBusca(e.target.value)} placeholder="Buscar liderança..." className={inputCls + " pl-8"} style={inputStyle} />
-          </div>
-          <select value={filtroNivel} onChange={e => setFiltroNivel(e.target.value)} className="border rounded-lg px-2 py-2 text-sm" style={inputStyle}>
-            <option>Todos</option>
-            {NIVEIS_LIDERANCA.map(n => <option key={n}>{n}</option>)}
-            <option>Sem nível</option>
-          </select>
-        </div>
-        <button onClick={openNew} className="flex items-center justify-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
+      <div className="flex justify-end">
+        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
           <Plus size={16} /> Nova liderança
         </button>
       </div>
-
-      {lista.length === 0 && <EmptyState text="Nenhuma liderança encontrada." />}
-
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {lista.map(l => {
+        {items.map(l => {
           const vinculados = eleitores.filter(e => e.lideranca === l.nome).length;
-          const meta = Number(l.metaVotos) || 0;
-          const pct = meta ? Math.min(100, Math.round((vinculados / meta) * 100)) : 0;
           return (
             <div key={l.id} className="cc-card p-4 flex flex-col gap-3">
               <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3 min-w-0">
-                  <div className="w-10 h-10 rounded-full flex-shrink-0 flex items-center justify-center font-semibold cc-display" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                    {(l.nome || "?").split(" ").map(n => n[0]).slice(0, 2).join("")}
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold cc-display" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
+                    {l.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
                   </div>
-                  <div className="min-w-0">
-                    <p className="font-semibold text-sm truncate">{l.nome}</p>
-                    <div className="flex flex-wrap gap-1 mt-1">
-                      <Pill text={l.nivel} cores={NIVEL_CORES} />
-                      <Pill text={l.status} cores={STATUS_LID_CORES} />
-                    </div>
+                  <div>
+                    <p className="font-semibold text-sm">{l.nome}</p>
+                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{l.telefone}</p>
                   </div>
                 </div>
                 <div className="flex gap-1">
@@ -766,30 +643,12 @@ function LiderancasView({ items, setItems, eleitores, table }) {
                   <button onClick={() => remove(l.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={13} style={{ color: "var(--red-500)" }} /></button>
                 </div>
               </div>
-              <div className="flex flex-col gap-1 text-xs" style={{ color: "var(--ink-500)" }}>
-                <span className="flex items-center gap-1.5"><Phone size={12} /> {l.telefone || "—"}</span>
-                {l.bairro && <span className="flex items-center gap-1.5"><MapPin size={12} /> {l.bairro}</span>}
-                {l.responsavel && <span className="flex items-center gap-1.5"><UserCheck size={12} /> Responsável: {l.responsavel}</span>}
-                {l.observacoes && <span className="flex items-start gap-1.5"><FileText size={12} className="mt-0.5 flex-shrink-0" /> {l.observacoes}</span>}
+              <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-500)" }}>
+                <Phone size={12} /> {l.telefone}
               </div>
-              <div className="flex flex-col gap-1.5 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-                <div className="flex items-center justify-between text-xs">
-                  <span style={{ color: "var(--ink-500)" }}>Apoiadores vinculados / meta</span>
-                  <span className="cc-display font-bold text-sm">{vinculados}{meta ? ` / ${meta}` : ""}</span>
-                </div>
-                {meta > 0 && (
-                  <div className="h-1.5 rounded-full" style={{ background: "#EEF0F4" }}>
-                    <div className="h-1.5 rounded-full" style={{ width: `${pct}%`, background: "#1E8E5F" }} />
-                  </div>
-                )}
-              </div>
-              <div className="flex gap-2">
-                <button onClick={() => enviar(l)} disabled={!telefoneWhats(l.telefone)} className="flex-1 flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold text-white disabled:opacity-40" style={{ background: "#25D366" }}>
-                  <Send size={13} /> Enviar WhatsApp
-                </button>
-                <button onClick={() => copiar(l)} className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg text-xs font-semibold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                  <Copy size={13} /> {copiado === l.id ? "Copiado!" : "Copiar"}
-                </button>
+              <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+                <span className="text-xs" style={{ color: "var(--ink-500)" }}>Apoiadores vinculados</span>
+                <span className="cc-display font-bold text-sm">{vinculados}</span>
               </div>
             </div>
           );
@@ -806,34 +665,15 @@ function LiderancasView({ items, setItems, eleitores, table }) {
 
 function FormLideranca({ data, onSave }) {
   const [form, setForm] = useState(data);
-  const set = (k, v) => setForm({ ...form, [k]: v });
   return (
     <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
-      <Field label="Nome"><input required className={inputCls} style={inputStyle} value={form.nome} onChange={e => set("nome", e.target.value)} /></Field>
-      <Field label="WhatsApp"><input required className={inputCls} style={inputStyle} placeholder="(44) 99999-1234" value={form.telefone} onChange={e => set("telefone", e.target.value)} /></Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Nível">
-          <select className={inputCls} style={inputStyle} value={form.nivel || ""} onChange={e => set("nivel", e.target.value)}>
-            <option value="">Sem nível</option>
-            {NIVEIS_LIDERANCA.map(n => <option key={n}>{n}</option>)}
-          </select>
-        </Field>
-        <Field label="Meta de votos">
-          <input type="number" min="0" className={inputCls} style={inputStyle} value={form.metaVotos ?? 0} onChange={e => set("metaVotos", e.target.value)} />
-        </Field>
-      </div>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Status">
-          <select className={inputCls} style={inputStyle} value={form.status} onChange={e => set("status", e.target.value)}>
-            {STATUS_LIDERANCA.map(s => <option key={s}>{s}</option>)}
-          </select>
-        </Field>
-        <Field label="Responsável por">
-          <input className={inputCls} style={inputStyle} value={form.responsavel || ""} onChange={e => set("responsavel", e.target.value)} />
-        </Field>
-      </div>
-      <Field label="Bairro"><input className={inputCls} style={inputStyle} value={form.bairro || ""} onChange={e => set("bairro", e.target.value)} /></Field>
-      <Field label="Observações"><textarea className={inputCls + " min-h-[70px]"} style={inputStyle} value={form.observacoes || ""} onChange={e => set("observacoes", e.target.value)} /></Field>
+      <Field label="Nome"><input required className={inputCls} style={inputStyle} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></Field>
+      <Field label="Telefone"><input required className={inputCls} style={inputStyle} value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} /></Field>
+      <Field label="Status">
+        <select className={inputCls} style={inputStyle} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
+          <option>Ativa</option><option>Inativa</option>
+        </select>
+      </Field>
       <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
     </form>
   );
@@ -2717,7 +2557,7 @@ function ExportarView({ eleitores, cabos, liderancas }) {
   const exports = [
     { label: "Eleitores", desc: `${eleitores.length} registros`, icon: Users, action: () => exportCSV(eleitores, "eleitores_ivatuba.csv", ["nome", "telefone", "categoria", "status", "lideranca", "tags", "cadastro"]) },
     { label: "Cabos Eleitorais", desc: `${cabos.length} registros`, icon: Target, action: () => exportCSV(cabos, "cabos_eleitorais.csv", ["nome", "telefone", "meta", "contatosRealizados", "status"]) },
-    { label: "Lideranças", desc: `${liderancas.length} registros`, icon: Crown, action: () => exportCSV(liderancas, "liderancas.csv", ["nome", "telefone", "nivel", "metaVotos", "status", "responsavel", "bairro", "observacoes"]) },
+    { label: "Lideranças", desc: `${liderancas.length} registros`, icon: Crown, action: () => exportCSV(liderancas, "liderancas.csv", ["nome", "telefone", "apoiadores"]) },
   ];
 
   return (
@@ -3406,6 +3246,14 @@ export default function App() {
   const fiscaisTable = useSupabaseTable("fiscais_diad", []);
   const historicoTable = useSupabaseTable("historico_contato", []);
   const deputadosTable = useSupabaseTable("deputados", []);
+  const eleitoresAdrianoTable = useSupabaseTable("eleitores_adriano", []);
+  const eleitoresParanhosTable = useSupabaseTable("eleitores_paranhos", []);
+  const mensagensKV = useSupabaseKV("mensagens_config", {}, "chave", "valor");
+  const [importando, setImportando] = useState(false);
+  const [aviso, setAviso] = useState(null);
+  const tabelasEleitores = { eleitores: eleitoresTable, adriano: eleitoresAdrianoTable, paranhos: eleitoresParanhosTable };
+  const fecharImport = (msg) => { setImportando(false); if (msg) { setAviso(msg); setTimeout(() => setAviso(null), 3000); } };
+  const exportar = () => exportarPlanilha({ liderancas: liderancasTable.items, tables: tabelasEleitores });
   const depAcoesTable = useSupabaseTable("deputado_acoes", []);
   const depPropostasTable = useSupabaseTable("deputado_propostas", []);
 
@@ -3459,12 +3307,12 @@ export default function App() {
       {/* Main */}
       <main className="flex-1 p-4 sm:p-6 cc-fade-in">
         {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} onNavigate={setView} />}
-        {view === "eleitores" && <EleitoresView items={eleitores} setItems={setEleitores} liderancas={liderancas} table={eleitoresTable} />}
-        {view === "mensagens" && <MensagensView eleitores={eleitores} />}
+        {view === "eleitores" && <EleitoresPlanilhaView tables={tabelasEleitores} liderancas={liderancas} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
+        {view === "mensagens" && <MensagensPlanilhaView liderancasTable={liderancasTable} tables={tabelasEleitores} msgKV={mensagensKV} onExportar={exportar} />}
         {view === "whatsgrupos" && <WhatsGruposView items={whatsGruposTable.items} setItems={whatsGruposTable.setItems} table={whatsGruposTable} />}
         {view === "instagram" && <InstagramView items={instagramTable.items} setItems={instagramTable.setItems} table={instagramTable} />}
         {view === "visitascasa" && <VisitaCasaView items={visitasCasaTable.items} setItems={visitasCasaTable.setItems} table={visitasCasaTable} />}
-        {view === "liderancas" && <LiderancasView items={liderancas} setItems={setLiderancas} eleitores={eleitores} table={liderancasTable} />}
+        {view === "liderancas" && <LiderancasPlanilhaView table={liderancasTable} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
         {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
         {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
         {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
@@ -3510,6 +3358,11 @@ export default function App() {
 
       <MoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} onNavigate={setView} currentView={view} />
       <InstallPrompt />
+      {importando && <ImportarPlanilha liderancasTable={liderancasTable} tables={tabelasEleitores} msgKV={mensagensKV} onClose={fecharImport} />}
+      {aviso && (
+        <div role="status" className="fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-lg text-sm font-semibold text-white shadow-lg"
+          style={{ background: "var(--navy-950)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>{aviso}</div>
+      )}
     </div>
   );
 }
