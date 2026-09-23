@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { supabase } from "./supabaseClient";
+import { toast } from "./ui";
+
+const avisarErro = (acao, error) => {
+  console.error(acao, error);
+  const offline = typeof navigator !== "undefined" && navigator.onLine === false;
+  toast(offline ? "Sem internet. Tente de novo quando a conexão voltar." : `Não foi possível ${acao}. Tente novamente.`, "erro");
+};
 
 const toSnake = (s) => s.replace(/[A-Z]/g, (c) => "_" + c.toLowerCase());
 const toCamel = (s) => s.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
@@ -37,7 +44,8 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
       .select("*")
       .order(orderCol)
       .then(({ data, error }) => {
-        if (!error && data?.length) setItems(data.map(fromDb));
+        if (error) avisarErro("carregar os dados", error);
+        else if (data?.length) setItems(data.map(fromDb));
         setLoading(false);
       });
   }, [table, orderCol]);
@@ -59,6 +67,7 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
         const fakeId = Math.max(0, ...items.map((i) => i.id)) + 1;
         const created = { ...row, id: fakeId };
         setItems((prev) => [created, ...prev]);
+        toast("Cadastrado com sucesso");
         return created;
       }
       const dbRow = toDb(rest);
@@ -68,11 +77,12 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
         .select()
         .single();
       if (error) {
-        console.error(`insert ${table}:`, error);
+        avisarErro("salvar", error);
         return null;
       }
       const mapped = fromDb(data);
       setItems((prev) => [mapped, ...prev]);
+      toast("Cadastrado com sucesso");
       return mapped;
     },
     [table, items]
@@ -91,7 +101,7 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
       const dbRows = rows.map(({ id, createdAt, ...rest }) => toDb(rest));
       const { data, error } = await supabase.from(table).insert(dbRows).select();
       if (error) {
-        console.error(`insertMany ${table}:`, error);
+        avisarErro("salvar", error);
         return null;
       }
       const mapped = data.map(fromDb);
@@ -110,8 +120,9 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
       }
       const dbChanges = toDb(rest);
       const { error } = await supabase.from(table).update(dbChanges).eq("id", id);
-      if (error) console.error(`update ${table}:`, error);
+      if (error) { avisarErro("salvar a alteração", error); return false; }
       setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...changes } : i)));
+      return true;
     },
     [table]
   );
@@ -120,9 +131,10 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
     async (id) => {
       if (supabase) {
         const { error } = await supabase.from(table).delete().eq("id", id);
-        if (error) console.error(`delete ${table}:`, error);
+        if (error) { avisarErro("excluir", error); return false; }
       }
       setItems((prev) => prev.filter((i) => i.id !== id));
+      return true;
     },
     [table]
   );
@@ -156,7 +168,7 @@ export function useSupabaseKV(table, fallback, keyCol = "cargo", valCol = "meta"
       const { error } = await supabase
         .from(table)
         .upsert({ [keyCol]: key, [valCol]: value });
-      if (error) console.error(`upsert ${table}:`, error);
+      if (error) avisarErro("salvar a configuração", error);
     },
     [table, keyCol, valCol]
   );

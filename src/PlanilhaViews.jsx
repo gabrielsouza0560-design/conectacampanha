@@ -7,6 +7,8 @@ import {
   Search, Plus, X, Pencil, Trash2, Copy, Send, Upload, Download, CheckCircle2,
   ChevronDown, ChevronUp, MessageCircle, Users,
 } from "lucide-react";
+import { toast, confirmar, useIsMobile, Sheet, IconBtn, Vazio } from "./ui";
+import { useAcaoPendente } from "./Shell";
 
 export const NIVEL_LID = ["Cabo Eleitoral", "Liderança", "Apoiador"];
 export const STATUS_LID = ["Ativo", "Inativo", "Pausado"];
@@ -96,28 +98,11 @@ function Kpi({ label, value, tone, lead }) {
   );
 }
 function useToast() {
-  const [msg, setMsg] = useState(null);
-  const timer = useRef(null);
-  const avisar = (m) => { setMsg(m); clearTimeout(timer.current); timer.current = setTimeout(() => setMsg(null), 2500); };
-  const el = msg ? (
-    <div role="status" className="fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-lg text-sm font-semibold text-white shadow-lg"
-      style={{ background: "var(--navy-950)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>{msg}</div>
-  ) : null;
-  return [avisar, el];
+  // usa o aviso global do app (ToastHost)
+  return [(m) => toast(m), null];
 }
 function Folha({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center sm:p-4" style={{ background: "rgba(10,25,41,0.55)" }}
-      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="cc-card cc-fade-in w-full max-w-xl max-h-[92vh] overflow-y-auto cc-scroll rounded-b-none sm:rounded-[14px]" style={{ background: "var(--surface)" }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b sticky top-0 z-10" style={{ borderColor: "var(--border)", background: "var(--surface)" }}>
-          <h3 className="cc-display font-semibold text-base">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100" aria-label="Fechar"><X size={18} /></button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
+  return <Sheet title={title} onClose={onClose}>{children}</Sheet>;
 }
 function Campo({ label, children, full }) {
   return (
@@ -177,6 +162,8 @@ function PainelMensagem({ chave, rotulo, msgKV, avisar }) {
 }
 
 function focarNovaLinha() {
+  // no celular a lista vira cards: abre a ficha de novo cadastro
+  if (window.matchMedia("(max-width: 767px)").matches) { window.dispatchEvent(new Event("cc-grade-novo")); return; }
   const el = document.querySelector(".xg tr.xg-new input");
   if (el) { el.scrollIntoView({ block: "center", behavior: "smooth" }); setTimeout(() => el.focus(), 250); }
 }
@@ -280,7 +267,126 @@ function BotaoExcluirMini({ onConfirm }) {
 }
 
 // columns: [{key,label,width,type:'text'|'number'|'tel'|'cpf'|'select',opcoes,tipo,get,set,placeholder}]
-function Grade({ columns, rows, onUpdate, onInsert, onDelete, acoes, total, novaLinha = true, numeroBase = 0 }) {
+function Grade(props) {
+  const mobile = useIsMobile();
+  return mobile ? <GradeCards {...props} /> : <GradeTabela {...props} />;
+}
+
+// ---------- celular: cada linha vira um card; toque abre a ficha completa ----------
+function GradeCards({ columns, rows, onUpdate, onInsert, onDelete, acoes, total }) {
+  const [limite, setLimite] = useState(40);
+  const [ficha, setFicha] = useState(null); // {modo:'ver'|'novo', id?}
+  const getV = (c, r) => (c.get ? c.get(r) : r[c.key]);
+  React.useEffect(() => {
+    const on = () => setFicha({ modo: "novo" });
+    window.addEventListener("cc-grade-novo", on);
+    return () => window.removeEventListener("cc-grade-novo", on);
+  }, []);
+  const nome = columns[0];
+  const tel = columns.find((c) => c.type === "tel");
+  const editavel = columns.some((c) => !c.readOnly);
+  const telCol = tel || columns.find((c) => /^tel/.test(c.key));
+  const chips = editavel ? columns.filter((c) => c.type === "select" && !/^cargo_/.test(c.key)).slice(0, 3)
+    : columns.filter((c) => c !== nome && c !== telCol && c.key !== "msg").slice(0, 3);
+  const atual = ficha?.modo === "ver" ? rows.find((r) => r.id === ficha.id) : null;
+  return (
+    <>
+      <div className="flex flex-col gap-2">
+        {rows.slice(0, limite).map((r) => (
+          <div key={r.id} className="cc-card cc-rowcard">
+            {React.createElement(editavel ? "button" : "div", {
+              className: "text-left flex flex-col gap-1.5",
+              ...(editavel ? { onClick: () => setFicha({ modo: "ver", id: r.id }), "aria-label": `Abrir ficha de ${getV(nome, r)}` } : {}),
+            },
+              <span className="font-semibold text-[15px] leading-snug">{getV(nome, r) || "Sem nome"}</span>,
+              telCol && <span className="text-xs" style={{ color: "var(--ink-500)" }}>{getV(telCol, r) || "Sem telefone"}</span>,
+              <span className="flex flex-wrap gap-1.5">
+                {chips.map((c) => { const v = getV(c, r); if (!v || v === "—") return null; const t = TONS[tomDe(v, c.tipo)]; return <span key={c.key} className="cc-chip" style={{ background: t.bg, color: t.fg }}>{v}</span>; })}
+              </span>
+            )}
+            <div className="flex items-center justify-between gap-2 pt-2 border-t" style={{ borderColor: "var(--border)" }}>
+              <div className="xg-act xg-act-card">{acoes && acoes(r)}</div>
+              {editavel && <IconBtn label="Editar" onClick={() => setFicha({ modo: "ver", id: r.id })}><Pencil size={18} /></IconBtn>}
+            </div>
+          </div>
+        ))}
+        {!rows.length && <div className="cc-card"><Vazio texto="Nenhum cadastro encontrado." /></div>}
+        {rows.length > limite && (
+          <button className="cc-btn cc-btn-secondary w-full" onClick={() => setLimite((n) => n + 40)}>Mostrar mais ({rows.length - limite})</button>
+        )}
+        {total && <p className="text-xs font-semibold px-1 py-2" style={{ color: "var(--ink-500)" }}>{total}</p>}
+      </div>
+      <style>{`.xg-act-card{display:flex;flex-wrap:wrap;gap:6px}.xg-act-card a,.xg-act-card button{display:inline-flex;align-items:center;gap:5px;min-height:38px;padding:0 12px;border-radius:10px;border:1px solid var(--border);background:#fff;font-size:13px;font-weight:600;color:var(--ink-900)}.xg-act-card a.wa{background:#1F9D55;border-color:#1F9D55;color:#fff}.xg-act-card span{font-size:12px;color:var(--ink-500);align-self:center}`}</style>
+      {ficha?.modo === "novo" && (
+        <FichaRegistro titulo="Novo cadastro" columns={columns} registro={{}} novo
+          onSalvar={async (rec) => { const ok = await onInsert(rec); if (ok !== false) setFicha(null); }} onClose={() => setFicha(null)} />
+      )}
+      {atual && (
+        <FichaRegistro titulo={getV(nome, atual) || "Cadastro"} columns={columns} registro={atual}
+          onCampo={(c, v) => onUpdate(atual, c.set ? c.set(v, atual) : { [c.key]: v })}
+          onExcluir={onDelete ? async () => { if (await confirmar("Esse cadastro será excluído. Deseja continuar?")) { await onDelete(atual); setFicha(null); } } : null}
+          onClose={() => setFicha(null)} acoes={acoes} />
+      )}
+    </>
+  );
+}
+
+function FichaRegistro({ titulo, columns, registro, novo, onSalvar, onCampo, onExcluir, onClose, acoes }) {
+  const [rec, setRec] = useState(registro);
+  const [salvando, setSalvando] = useState(false);
+  const [erroNome, setErroNome] = useState("");
+  const getV = (c, r) => (c.get ? c.get(r) : r[c.key]);
+  const mudar = (c, v) => {
+    const patch = c.set ? c.set(v, rec) : { [c.key]: v };
+    setRec((r) => ({ ...r, ...patch }));
+    if (!novo) onCampo(c, v);
+  };
+  const nome = columns[0];
+  async function salvar() {
+    if (!(getV(nome, rec) || "").trim()) { setErroNome("Informe o nome."); return; }
+    setSalvando(true); await onSalvar(rec); setSalvando(false);
+  }
+  return (
+    <Sheet title={titulo} onClose={onClose}
+      footer={novo ? (
+        <button className="cc-btn cc-btn-primary w-full" onClick={salvar} disabled={salvando}>{salvando ? "Salvando…" : <><Plus size={18} /> Cadastrar</>}</button>
+      ) : (
+        <div className="flex gap-2">
+          {onExcluir && <button className="cc-btn cc-btn-secondary" style={{ color: "var(--red-500)" }} onClick={onExcluir}><Trash2 size={17} /> Excluir</button>}
+          <button className="cc-btn cc-btn-primary flex-1" onClick={onClose}><CheckCircle2 size={18} /> Pronto</button>
+        </div>
+      )}>
+      {!novo && acoes && <div className="xg-act xg-act-card mb-4">{acoes(registro)}</div>}
+      {!novo && <p className="text-xs mb-3" style={{ color: "var(--ink-500)" }}>As alterações são salvas automaticamente.</p>}
+      <div className="grid sm:grid-cols-2 gap-3">
+        {columns.filter((c) => !c.readOnly).map((c, i) => (
+          <Campo key={c.key} label={c.label + (i === 0 ? " *" : "")} full={i === 0 || c.key === "observacoes"}>
+            {c.type === "select" ? (
+              <Sel value={getV(c, rec)} onChange={(v) => mudar(c, v)} opcoes={c.opcoes} />
+            ) : (
+              <CampoTexto c={c} valor={getV(c, rec)} onCommit={(v) => mudar(c, v)} autoFocus={novo && i === 0} />
+            )}
+            {i === 0 && erroNome && <span className="text-xs font-semibold" style={{ color: "var(--red-500)" }}>{erroNome}</span>}
+          </Campo>
+        ))}
+      </div>
+    </Sheet>
+  );
+}
+function CampoTexto({ c, valor, onCommit, autoFocus }) {
+  const [v, setV] = useState(valor ?? "");
+  const fmt = c.type === "tel" ? fmtTel : c.type === "cpf" ? fmtCpf : null;
+  const commit = () => { let nv = fmt ? fmt(v) : v; if (c.type === "number") nv = nv === "" ? 0 : Math.max(0, Number(nv) || 0); setV(nv); if (String(nv) !== String(valor ?? "")) onCommit(nv); };
+  return (
+    <input className={inputCls} style={inputStyle} value={v} autoFocus={autoFocus} list={c.list}
+      type={c.type === "number" ? "number" : c.type === "tel" ? "tel" : "text"}
+      inputMode={c.type === "tel" ? "tel" : c.type === "cpf" || c.type === "number" ? "numeric" : undefined}
+      placeholder={c.placeholder} onChange={(e) => setV(e.target.value)} onBlur={commit}
+      onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+  );
+}
+
+function GradeTabela({ columns, rows, onUpdate, onInsert, onDelete, acoes, total, novaLinha = true, numeroBase = 0 }) {
   const [nova, setNova] = useState({});
   const [chaveNova, setChaveNova] = useState(0);
   const getV = (c, r) => (c.get ? c.get(r) : r[c.key]);
@@ -431,7 +537,7 @@ export function LiderancasPlanilhaView({ table, msgKV, onImportar }) {
         ]}
         rows={lista}
         onUpdate={(r, patch) => table.update(r.id, patch)}
-        onInsert={async (rec) => { const res = await table.insert({ nome: rec.nome.trim(), nivel: rec.nivel || "", metaVotos: Number(rec.metaVotos) || 0, status: rec.status || "Ativo", telefone: rec.telefone || "", responsavel: rec.responsavel || "", observacoes: rec.observacoes || "" }); if (res) avisar("Liderança cadastrada"); return !!res; }}
+        onInsert={async (rec) => { const res = await table.insert({ nome: rec.nome.trim(), nivel: rec.nivel || "", metaVotos: Number(rec.metaVotos) || 0, status: rec.status || "Ativo", telefone: rec.telefone || "", responsavel: rec.responsavel || "", observacoes: rec.observacoes || "" }); return !!res; }}
         onDelete={async (r) => { await table.remove(r.id); avisar("Liderança excluída"); }}
         acoes={(r) => <AcoesLinha tel={r.telefone} msg={montarMensagem(msgKV.data?.liderancas, r.nome)} avisar={avisar} />}
         total={`${lista.length} lideranças · Cabo: ${lista.filter((r) => r.nivel === "Cabo Eleitoral").length} · Lid: ${lista.filter((r) => r.nivel === "Liderança").length} · Apoio: ${lista.filter((r) => r.nivel === "Apoiador").length} · Meta: ${lista.reduce((t, r) => t + (Number(r.metaVotos) || 0), 0).toLocaleString("pt-BR")} votos`}
@@ -469,6 +575,7 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
   const [avisar, toastEl] = useToast();
   const [lote, setLote] = useState(false);
   const [envio, setEnvio] = useState(false);
+  useAcaoPendente("eleitores", { novo: focarNovaLinha, lote: () => setLote(true) });
   const s = statsEle(rows);
   const lista = useMemo(() => rows.filter((r) => {
     if (q && !norm([r.nome, r.telefone, r.cpf, r.lideranca, r.observacoes].join(" ")).includes(norm(q))) return false;
@@ -495,13 +602,13 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
           <h2 className="cc-display text-xl font-bold">{def.title}</h2>
           <p className="text-sm" style={{ color: "var(--ink-500)" }}>{def.sub}</p>
         </div>
-        <div className="flex gap-2">
-          {onImportar && <button onClick={onImportar} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--border)", background: "var(--surface)" }}><Upload size={15} /> Importar<span className="hidden sm:inline"> planilha</span></button>}
-          <button onClick={() => setLote(true)} className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--blue-600)", color: "var(--blue-600)", background: "var(--surface)" }}>
+        <div className="grid grid-cols-3 gap-2 w-full sm:w-auto sm:flex">
+          {onImportar && <button onClick={onImportar} className="flex items-center justify-center gap-1.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--border)", background: "var(--surface)" }}><Upload size={15} /> Importar<span className="hidden sm:inline"> planilha</span></button>}
+          <button onClick={() => setLote(true)} className="flex items-center justify-center gap-1.5 px-3 min-h-[44px] rounded-xl text-sm font-semibold border whitespace-nowrap" style={{ borderColor: "var(--blue-600)", color: "var(--blue-600)", background: "var(--surface)" }}>
             <Users size={15} /> Vários<span className="hidden sm:inline"> eleitores</span>
           </button>
           <button onClick={focarNovaLinha}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white whitespace-nowrap" style={{ background: "var(--blue-600)" }}>
+            className="flex items-center justify-center gap-1.5 px-4 min-h-[44px] rounded-xl text-sm font-semibold text-white whitespace-nowrap" style={{ background: "var(--blue-600)" }}>
             <Plus size={16} /> Novo<span className="hidden sm:inline"> eleitor</span>
           </button>
         </div>
@@ -573,7 +680,7 @@ function ListaEleitores({ def, table, liderancas, msgKV, onImportar }) {
           const dados = { nome: rec.nome.trim(), cpf: rec.cpf || "", telefone: rec.telefone || "", genero: rec.genero || "", status: rec.status || "",
             categoria: rec.categoria || "", contatoStatus: rec.contatoStatus || "", lideranca: rec.lideranca || "", observacoes: rec.observacoes || "" };
           if (def.cargos) dados.cargos = rec.cargos || {};
-          const res = await table.insert(dados); if (res) avisar("Eleitor cadastrado"); return !!res; }}
+          const res = await table.insert(dados); return !!res; }}
         onDelete={async (r) => { await table.remove(r.id); avisar("Eleitor excluído"); }}
         acoes={(r) => <AcoesLinha tel={r.telefone} msg={montarMensagem(msgKV.data?.[def.key], r.nome)} avisar={avisar}
           onMarcar={r.contatoStatus !== "Enviado" ? () => marcar(r) : null} />}
@@ -925,10 +1032,15 @@ export function ImportarPlanilha({ liderancasTable, tables, msgKV, onClose }) {
     plano.listas.forEach((l) => l.novos.forEach((r) => { if (!comExemplos && isExemplo(r)) return; jobs.push([l.table, r]); }));
     let ok = 0, falha = 0;
     setProgresso({ ok, total: jobs.length });
-    for (const [table, r] of jobs) {
-      const res = await table.insert(r);
-      if (res) ok++; else falha++;
-      setProgresso({ ok, total: jobs.length });
+    // envia em blocos de 50 por lista (bem mais rápido e sem avisos repetidos)
+    for (const l of plano.listas) {
+      const recs = jobs.filter(([t]) => t === l.table).map(([, r]) => r);
+      for (let i = 0; i < recs.length; i += 50) {
+        const parte = recs.slice(i, i + 50);
+        const res = await l.table.insertMany(parte);
+        if (res) ok += parte.length; else falha += parte.length;
+        setProgresso({ ok, total: jobs.length });
+      }
     }
     if (comMsgs) for (const [k, v] of Object.entries(plano.msgs)) await msgKV.setValue(k, v);
     if (falha) { setErro(`${ok} importados e ${falha} com erro. Importe de novo: quem já entrou será ignorado.`); setProgresso(null); }
