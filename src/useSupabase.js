@@ -78,6 +78,29 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
     [table, items]
   );
 
+  // Insere vários registros de uma vez (um único pedido ao Supabase por lote).
+  const insertMany = useCallback(
+    async (rows) => {
+      if (!rows.length) return [];
+      if (!supabase) {
+        let base = Math.max(0, ...items.map((i) => i.id));
+        const created = rows.map((r) => ({ ...r, id: ++base }));
+        setItems((prev) => [...created.slice().reverse(), ...prev]);
+        return created;
+      }
+      const dbRows = rows.map(({ id, createdAt, ...rest }) => toDb(rest));
+      const { data, error } = await supabase.from(table).insert(dbRows).select();
+      if (error) {
+        console.error(`insertMany ${table}:`, error);
+        return null;
+      }
+      const mapped = data.map(fromDb);
+      setItems((prev) => [...mapped.slice().reverse(), ...prev]);
+      return mapped;
+    },
+    [table, items]
+  );
+
   const update = useCallback(
     async (id, changes) => {
       const { id: _, createdAt, ...rest } = changes;
@@ -104,7 +127,7 @@ export function useSupabaseTable(table, fallback, orderCol = "id") {
     [table]
   );
 
-  return { items, setItems: setAndSync, insert, update, remove, loading };
+  return { items, setItems: setAndSync, insert, insertMany, update, remove, loading };
 }
 
 export function useSupabaseKV(table, fallback, keyCol = "cargo", valCol = "meta") {
