@@ -1,4 +1,6 @@
-import React, { useState, useMemo, useCallback, useRef } from "react";
+import React, { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { Sidebar, Drawer, Header, BottomNav, AcoesRapidas, PainelAlertas, useAlertas, pedirAcao, useAcaoPendente, NAV_ITEMS } from "./Shell";
+import { Sheet, ToastHost, ConfirmHost, LoadingScreen, toast, confirmar, IconBtn, Vazio, Skeleton } from "./ui";
 import { useSupabaseTable, useSupabaseKV } from "./useSupabase";
 import InstallPrompt from "./InstallPrompt";
 import {
@@ -18,7 +20,6 @@ import {
   Landmark, Globe, Star, ArrowLeft, Link2, ChevronDown, ChevronUp,
   Building2, Briefcase, DollarSign, GraduationCap, Heart
 } from "lucide-react";
-import jsPDF from "jspdf";
 import {
   ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
   BarChart, Bar, CartesianGrid
@@ -77,152 +78,11 @@ const CARGOS = ["Deputado Estadual", "Deputado Federal", "Senado", "Governador",
 const INTENCOES = ["Nosso candidato", "Outro candidato", "Indeciso"];
 const CATEGORIAS = ["Amigos", "Prefeitura", "Igreja", "Carretinha de Natal", "Comerciantes", "Barracas", "Visitas"];
 
-const seedMetasVotos = {
-  "Presidente": 5000,
-  "Governador": 4200,
-  "Senador": 3800,
-  "Deputado Federal": 3000,
-  "Deputado Estadual": 2500,
-};
-
 function intencoesPadrao() {
   return { "Deputado Estadual": "Indeciso", "Deputado Federal": "Indeciso", "Senado": "Indeciso", "Governador": "Indeciso", "Presidente": "Indeciso" };
 }
 
-const seedEleitores = [
-  { id: 1, nome: "Marta Aparecida Silva", telefone: "(45) 99911-2233", bairro: "Centro", lideranca: "João Ferreira", status: "Confirmado", tags: ["saúde"], cadastro: "2026-06-02",
-    intencoes: { "Presidente": "Nosso candidato", "Governador": "Nosso candidato", "Senador": "Indeciso", "Deputado Federal": "Nosso candidato", "Deputado Estadual": "Nosso candidato" } },
-  { id: 2, nome: "Carlos Eduardo Santos", telefone: "(45) 99922-3344", bairro: "Vila Nova", lideranca: "Rosa Lima", status: "Pendente", tags: ["educação"], cadastro: "2026-06-10",
-    intencoes: { "Presidente": "Outro candidato", "Governador": "Indeciso", "Senador": "Nosso candidato", "Deputado Federal": "Indeciso", "Deputado Estadual": "Nosso candidato" } },
-  { id: 3, nome: "Fernanda Costa", telefone: "(45) 99933-4455", bairro: "Bela Vista", lideranca: "João Ferreira", status: "Confirmado", tags: ["infraestrutura"], cadastro: "2026-06-18",
-    intencoes: { "Presidente": "Nosso candidato", "Governador": "Nosso candidato", "Senador": "Nosso candidato", "Deputado Federal": "Nosso candidato", "Deputado Estadual": "Nosso candidato" } },
-  { id: 4, nome: "Roberto Almeida", telefone: "(45) 99944-5566", bairro: "São José", lideranca: "Rosa Lima", status: "Indeciso", tags: [], cadastro: "2026-07-01",
-    intencoes: { "Presidente": "Indeciso", "Governador": "Indeciso", "Senador": "Indeciso", "Deputado Federal": "Indeciso", "Deputado Estadual": "Indeciso" } },
-  { id: 5, nome: "Juliana Pereira", telefone: "(45) 99955-6677", bairro: "Industrial", lideranca: "Marcos Souza", status: "Confirmado", tags: ["saúde"], cadastro: "2026-07-14",
-    intencoes: { "Presidente": "Nosso candidato", "Governador": "Outro candidato", "Senador": "Nosso candidato", "Deputado Federal": "Nosso candidato", "Deputado Estadual": "Nosso candidato" } },
-];
 
-const seedGastos = [
-  { id: 1, descricao: "Impressão de santinhos", categoria: "Material gráfico", valor: 1850, data: "2026-07-10", observacoes: "Lote inicial" },
-  { id: 2, descricao: "Combustível carreata Paulista", categoria: "Logística", valor: 620, data: "2026-07-18", observacoes: "" },
-  { id: 3, descricao: "Faixas de rua", categoria: "Material gráfico", valor: 1957, data: "2026-07-25", observacoes: "Centro e Vila Nova" },
-];
-
-const seedMaterial = [
-  { id: 1, nome: "Santinhos", quantidadeTotal: 5000, quantidadeDistribuida: 1200, custoUnitario: 0.35, observacoes: "" },
-  { id: 2, nome: "Faixas de rua", quantidadeTotal: 40, quantidadeDistribuida: 12, custoUnitario: 45, observacoes: "" },
-  { id: 3, nome: "Adesivos de carro", quantidadeTotal: 2000, quantidadeDistribuida: 344, custoUnitario: 0.5, observacoes: "" },
-];
-
-const seedVisitas = [
-  { id: 1, pessoa: "Marta Aparecida Silva", endereco: "Rua das Palmeiras, 120 - Centro", data: "2026-08-05", hora: "10:00", assessor: "Paula Nunes", assunto: "Acompanhamento de demanda de saúde", resultado: "Positiva", proximosPassos: "Retornar em 15 dias" },
-  { id: 2, pessoa: "Roberto Almeida", endereco: "Av. São José, 45", data: "2026-08-06", hora: "15:30", assessor: "Diego Martins", assunto: "Apresentação de propostas", resultado: "Indeciso", proximosPassos: "Enviar material impresso" },
-  { id: 3, pessoa: "Fernanda Costa", endereco: "Rua Bela Vista, 88", data: "2026-08-07", hora: "09:15", assessor: "Paula Nunes", assunto: "Confirmação de apoio", resultado: "Positiva", proximosPassos: "Convidar para caminhada" },
-];
-
-const seedEventos = [
-  { id: 1, nome: "Caminhada Bela Vista", data: "2026-08-09", hora: "17:00", local: "Praça Bela Vista", responsavel: "Assessoria", publicoEstimado: 300, observacoes: "Confirmar carro de som" },
-  { id: 2, nome: "Encontro com lideranças do Centro", data: "2026-08-15", hora: "19:00", local: "Sede da campanha", responsavel: "João Ferreira", publicoEstimado: 60, observacoes: "" },
-  { id: 3, nome: "Feira de saúde comunitária", data: "2026-08-22", hora: "08:00", local: "Vila Nova", responsavel: "Rosa Lima", publicoEstimado: 500, observacoes: "Parceria com posto de saúde" },
-];
-
-const seedTarefas = [
-  { id: 1, titulo: "Preparar material da caminhada de Bela Vista", responsavel: "Paula Nunes", prazo: "2026-08-08", prioridade: "Alta", status: "Em andamento" },
-  { id: 2, titulo: "Atualizar planilha de apoiadores do Centro", responsavel: "Diego Martins", prazo: "2026-08-09", prioridade: "Média", status: "Pendente" },
-  { id: 3, titulo: "Confirmar carro de som para o evento", responsavel: "Camila Rocha", prazo: "2026-08-08", prioridade: "Alta", status: "Pendente" },
-  { id: 4, titulo: "Fechar prestação de contas da semana", responsavel: "Gabriel Souza", prazo: "2026-08-10", prioridade: "Média", status: "Concluída" },
-];
-
-const seedPesquisas = [
-  {
-    id: 1, titulo: "Avaliação da gestão atual", data: "2026-07-20", responsavel: "Equipe de campo",
-    opcoes: [
-      { texto: "Ótima/boa", respostas: 62 },
-      { texto: "Regular", respostas: 41 },
-      { texto: "Ruim/péssima", respostas: 27 },
-    ],
-  },
-  {
-    id: 2, titulo: "Principal problema do bairro", data: "2026-07-28", responsavel: "Equipe de campo",
-    opcoes: [
-      { texto: "Saúde", respostas: 58 },
-      { texto: "Infraestrutura", respostas: 44 },
-      { texto: "Educação", respostas: 22 },
-      { texto: "Segurança", respostas: 19 },
-    ],
-  },
-];
-
-const seedDocumentos = [
-  { id: 1, nome: "Registro de candidatura", categoria: "Jurídico", data: "2026-06-15", link: "", observacoes: "Protocolo no cartório eleitoral" },
-  { id: 2, nome: "Prestação de contas - julho", categoria: "Financeiro", data: "2026-08-01", link: "", observacoes: "" },
-  { id: 3, nome: "Roteiro da caminhada Bela Vista", categoria: "Comunicação", data: "2026-08-05", link: "", observacoes: "" },
-];
-
-const seedLiderancas = [
-  { id: 1, nome: "João Ferreira", bairro: "Centro / Bela Vista", telefone: "(45) 99101-0001", apoiadores: 128, status: "Ativa" },
-  { id: 2, nome: "Rosa Lima", bairro: "Vila Nova / São José", telefone: "(45) 99101-0002", apoiadores: 96, status: "Ativa" },
-  { id: 3, nome: "Marcos Souza", bairro: "Industrial", telefone: "(45) 99101-0003", apoiadores: 54, status: "Ativa" },
-];
-
-const seedDemandas = [
-  { id: 1, solicitante: "Marta Aparecida Silva", categoria: "Saúde", descricao: "Falta de médico no posto do Centro", bairro: "Centro", prioridade: "Alta", status: "Em andamento", prazo: "2026-08-15" },
-  { id: 2, solicitante: "Roberto Almeida", categoria: "Infraestrutura", descricao: "Buraco na rua principal", bairro: "São José", prioridade: "Média", status: "Nova", prazo: "2026-08-20" },
-  { id: 3, solicitante: "Fernanda Costa", categoria: "Educação", descricao: "Vaga em creche municipal", bairro: "Bela Vista", prioridade: "Alta", status: "Em análise", prazo: "2026-08-10" },
-  { id: 4, solicitante: "Juliana Pereira", categoria: "Saúde", descricao: "Encaminhamento para especialista", bairro: "Industrial", prioridade: "Baixa", status: "Resolvida", prazo: "2026-07-30" },
-];
-
-const seedAgenda = [
-  { id: 1, titulo: "Reunião com lideranças do Centro", data: "2026-08-08", hora: "09:00", local: "Sede da campanha", responsavel: "João Ferreira" },
-  { id: 2, titulo: "Visita ao bairro Vila Nova", data: "2026-08-08", hora: "14:30", local: "Vila Nova", responsavel: "Rosa Lima" },
-  { id: 3, titulo: "Caminhada Bela Vista", data: "2026-08-09", hora: "17:00", local: "Praça Bela Vista", responsavel: "Assessoria" },
-  { id: 4, titulo: "Reunião de equipe", data: "2026-08-10", hora: "10:00", local: "Sede da campanha", responsavel: "Coordenação" },
-];
-
-const chartData = [
-  { dia: "Seg", cadastros: 12, visitas: 8 },
-  { dia: "Ter", cadastros: 19, visitas: 11 },
-  { dia: "Qua", cadastros: 14, visitas: 9 },
-  { dia: "Qui", cadastros: 22, visitas: 15 },
-  { dia: "Sex", cadastros: 27, visitas: 18 },
-  { dia: "Sáb", cadastros: 31, visitas: 21 },
-  { dia: "Dom", cadastros: 18, visitas: 10 },
-];
-
-
-const BOTTOM_TABS = [
-  { key: "dashboard", label: "Início", icon: LayoutDashboard },
-  { key: "eleitores", label: "Eleitores", icon: Users },
-  { key: "liderancas", label: "Lideranças", icon: Crown },
-  { key: "mensagens", label: "Mensagens", icon: Send },
-  { key: "relatorios", label: "Votos", icon: Vote },
-];
-
-const MORE_ITEMS = [
-  { key: "votacao", label: "Votação Pública", icon: Vote, active: true },
-  { key: "whatsgrupos", label: "Grupos WhatsApp", icon: UsersRound, active: true },
-  { key: "instagram", label: "Instagram", icon: Instagram, active: true },
-  { key: "visitascasa", label: "Visita Casa", icon: Home, active: true },
-  { key: "agenda", label: "Agenda", icon: CalendarIcon, active: true },
-  { key: "demandas", label: "Demandas", icon: ClipboardList, active: true },
-  { key: "gastos", label: "Gastos", icon: Wallet, active: true },
-  { key: "material", label: "Material", icon: Package, active: true },
-  { key: "visitas", label: "Visitas", icon: MapPin, active: true },
-  { key: "eventos", label: "Eventos", icon: PartyPopper, active: true },
-  { key: "tarefas", label: "Tarefas", icon: CheckSquare, active: true },
-  { key: "pesquisas", label: "Pesquisas", icon: BarChart3, active: true },
-  { key: "documentos", label: "Documentos", icon: FileText, active: true },
-  { key: "cabos", label: "Cabos Eleitorais", icon: Target, active: true },
-  { key: "diad", label: "Dia D", icon: Shield, active: true },
-  { key: "historico", label: "Histórico Contato", icon: MessageSquare, active: true },
-  { key: "exportar", label: "Exportar", icon: Download, active: true },
-  { key: "deputados", label: "Deputados", icon: Landmark, active: true },
-];
-
-const MENU = [
-  ...BOTTOM_TABS.map(t => ({ ...t, active: true })),
-  ...MORE_ITEMS,
-];
 
 // ---------------------------------------------------------------------------
 // Small building blocks
@@ -261,17 +121,7 @@ function PrioTag({ p }) {
 }
 
 function Modal({ title, onClose, children }) {
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" style={{ background: "rgba(10,25,41,0.55)" }}>
-      <div className="cc-card cc-fade-in w-full max-w-lg max-h-[85vh] overflow-y-auto cc-scroll" style={{ background: "var(--surface)" }}>
-        <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "var(--border)" }}>
-          <h3 className="cc-display font-semibold text-base">{title}</h3>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100"><X size={18} /></button>
-        </div>
-        <div className="p-5">{children}</div>
-      </div>
-    </div>
-  );
+  return <Sheet title={title} onClose={onClose}>{children}</Sheet>;
 }
 
 function Field({ label, children }) {
@@ -298,84 +148,146 @@ function EmptyState({ text }) {
 // Views
 // ---------------------------------------------------------------------------
 
-function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, material, onNavigate }) {
-  const apoiadoresCount = eleitores.filter(e => e.status === "Confirmado").length;
+function DashboardView({ listas, liderancas, demandas, agenda, gastos, onNavigate, carregando }) {
+  if (carregando) return <Skeleton linhas={3} />;
+  const todos = [...listas.eleitores, ...listas.adriano, ...listas.paranhos];
+  const conta = (arr, f) => arr.filter(f).length;
+  const conf = conta(todos, e => e.status === "Confirmado");
+  const pend = conta(todos, e => e.status === "Pendente");
+  const indec = conta(todos, e => e.status === "Indeciso");
+  const enviados = conta(todos, e => e.contatoStatus === "Enviado");
+  const semana = Date.now() - 7 * 864e5;
+  const novosSemana = conta(todos, e => e.createdAt && new Date(e.createdAt).getTime() >= semana);
+  const pctConf = todos.length ? Math.round((conf / todos.length) * 100) : 0;
   const abertas = demandas.filter(d => d.status !== "Resolvida" && d.status !== "Cancelada").length;
-  const totalGasto = gastos.reduce((s, g) => s + g.valor, 0);
+  const totalGasto = gastos.reduce((s, g) => s + Number(g.valor || 0), 0);
   const fmt = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL", maximumFractionDigits: 0 });
-
-  const categoriaData = CATEGORIAS.map(cat => ({
-    categoria: cat,
-    total: eleitores.filter(e => e.categoria === cat).length,
-  }));
-  const semCategoria = eleitores.filter(e => !e.categoria).length;
-
+  const hoje = new Date().toLocaleDateString("sv-SE");
+  const proximos = agenda.filter(a => (a.data || "") >= hoje).sort((a, b) => (a.data + (a.hora || "")).localeCompare(b.data + (b.hora || ""))).slice(0, 4);
   const cores = ["#1B5FC4", "#38C6C8", "#F0A202", "#2AA876", "#E4572E", "#9A6300", "#5B6B7C"];
+  const categoriaData = CATEGORIAS.map(cat => ({ categoria: cat, total: conta(todos, e => e.categoria === cat) })).filter(c => c.total > 0);
+  const semCategoria = conta(todos, e => !e.categoria);
+
+  const Mini = ({ label, value, cor, icon: Icon, onClick }) => (
+    <button onClick={onClick} className="cc-card cc-card-hover p-4 flex flex-col gap-2 text-left">
+      <span className="w-9 h-9 rounded-xl flex items-center justify-center" style={{ background: cor + "1A", color: cor }}><Icon size={18} /></span>
+      <span className="cc-display text-2xl font-bold leading-none">{value}</span>
+      <span className="text-xs font-medium" style={{ color: "var(--ink-500)" }}>{label}</span>
+    </button>
+  );
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid grid-cols-2 gap-3">
-        <StatCard label="Eleitores" value={eleitores.length} tone="blue" />
-        <StatCard label="Apoiadores" value={apoiadoresCount} sub="confirmados" tone="teal" />
-        <StatCard label="Demandas abertas" value={abertas} tone="amber" />
-        <StatCard label="Total gasto" value={fmt(totalGasto)} tone="green" />
+      {/* Card principal */}
+      <button onClick={() => onNavigate("eleitores")} className="text-left rounded-[20px] p-5 text-white relative overflow-hidden"
+        style={{ background: "linear-gradient(135deg, #2E86D8 0%, #1B5FC4 40%, #0F2540 100%)" }}>
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm font-medium" style={{ color: "#D6E4F7" }}>Eleitores cadastrados</p>
+            <p className="cc-display text-5xl font-bold mt-1 leading-none">{todos.length}</p>
+          </div>
+          <span className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: "#ffffff22" }}><Users size={24} /></span>
+        </div>
+        <div className="flex items-center gap-2 mt-3 text-sm">
+          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full font-semibold" style={{ background: "#ffffff22" }}><TrendingUp size={14} /> +{novosSemana} nesta semana</span>
+          <span style={{ color: "#D6E4F7" }}>{pctConf}% confirmados</span>
+        </div>
+        <div className="h-2 rounded-full mt-4 overflow-hidden flex" style={{ background: "#ffffff26" }} role="img" aria-label={`${conf} confirmados, ${pend} pendentes, ${indec} indecisos`}>
+          <span style={{ width: `${todos.length ? conf / todos.length * 100 : 0}%`, background: "#5BE0A0" }} />
+          <span style={{ width: `${todos.length ? pend / todos.length * 100 : 0}%`, background: "#F6C453" }} />
+          <span style={{ width: `${todos.length ? indec / todos.length * 100 : 0}%`, background: "#FF8A65" }} />
+        </div>
+        <div className="flex flex-wrap gap-x-4 gap-y-1 mt-3 text-xs" style={{ color: "#D6E4F7" }}>
+          <span>Geral <b className="text-white">{listas.eleitores.length}</b></span>
+          <span>Adriano José <b className="text-white">{listas.adriano.length}</b></span>
+          <span>Paranhos <b className="text-white">{listas.paranhos.length}</b></span>
+        </div>
+      </button>
+
+      {/* Cards secundários */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+        <Mini label="Votos confirmados" value={conf} cor="#1E8E5F" icon={ThumbsUp} onClick={() => onNavigate("eleitores")} />
+        <Mini label="Pendentes" value={pend} cor="#9A6300" icon={Clock} onClick={() => onNavigate("eleitores")} />
+        <Mini label="Indecisos" value={indec} cor="#C8441F" icon={Minus} onClick={() => onNavigate("eleitores")} />
+        <Mini label="Mensagens enviadas" value={enviados} cor="#1B5FC4" icon={Send} onClick={() => onNavigate("mensagens")} />
+        <Mini label="Lideranças" value={liderancas.length} cor="#9A6300" icon={Crown} onClick={() => onNavigate("liderancas")} />
+        <Mini label="Demandas abertas" value={abertas} cor="#C8441F" icon={ClipboardList} onClick={() => onNavigate("demandas")} />
+        <Mini label="Compromissos futuros" value={agenda.filter(a => (a.data || "") >= hoje).length} cor="#0E8E90" icon={CalendarIcon} onClick={() => onNavigate("agenda")} />
+        <Mini label="Total gasto" value={fmt(totalGasto)} cor="#1E8E5F" icon={Wallet} onClick={() => onNavigate("gastos")} />
       </div>
 
-      <div className="cc-card p-4">
-        <h3 className="cc-display font-semibold text-sm mb-3">Apoiadores por categoria</h3>
-        <div className="flex flex-col gap-2">
-          {categoriaData.map((c, i) => {
-            const pct = eleitores.length ? Math.round((c.total / eleitores.length) * 100) : 0;
-            return (
-              <div key={c.categoria} className="flex items-center gap-3">
-                <span className="text-xs font-medium w-28 flex-shrink-0 truncate">{c.categoria}</span>
-                <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
-                  <div className="h-3 rounded-full transition-all" style={{ width: `${pct}%`, background: cores[i % cores.length] }} />
+      <div className="grid lg:grid-cols-2 gap-4">
+        {/* Próximos compromissos */}
+        <div className="cc-card p-4">
+          <div className="flex items-center justify-between mb-2">
+            <h3 className="cc-display font-semibold text-sm">Próximos compromissos</h3>
+            <button onClick={() => onNavigate("agenda")} className="text-xs font-semibold px-2 min-h-[36px]" style={{ color: "var(--blue-600)" }}>Ver agenda</button>
+          </div>
+          {proximos.length ? (
+            <div className="flex flex-col">
+              {proximos.map(a => (
+                <div key={a.id} className="flex items-center gap-3 py-2.5 border-t first:border-t-0" style={{ borderColor: "var(--border)" }}>
+                  <div className="w-12 text-center flex-shrink-0">
+                    <p className="cc-display font-bold leading-none" style={{ color: "var(--blue-600)" }}>{(a.data || "").slice(8, 10)}</p>
+                    <p className="text-[10px] uppercase" style={{ color: "var(--ink-500)" }}>{a.data ? new Date(a.data + "T12:00").toLocaleDateString("pt-BR", { month: "short" }).replace(".", "") : ""}</p>
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold truncate">{a.titulo}</p>
+                    <p className="text-xs truncate" style={{ color: "var(--ink-500)" }}>{[a.hora, a.local].filter(Boolean).join(" · ")}</p>
+                  </div>
                 </div>
-                <span className="text-xs font-bold cc-display w-8 text-right">{c.total}</span>
-              </div>
-            );
-          })}
-          {semCategoria > 0 && (
-            <div className="flex items-center gap-3">
-              <span className="text-xs font-medium w-28 flex-shrink-0 truncate" style={{ color: "var(--ink-300)" }}>Sem categoria</span>
-              <div className="flex-1 h-3 rounded-full" style={{ background: "var(--border)" }}>
-                <div className="h-3 rounded-full" style={{ width: `${Math.round((semCategoria / (eleitores.length || 1)) * 100)}%`, background: "var(--ink-300)" }} />
-              </div>
-              <span className="text-xs font-bold cc-display w-8 text-right" style={{ color: "var(--ink-300)" }}>{semCategoria}</span>
+              ))}
             </div>
-          )}
+          ) : <Vazio texto="Nenhum compromisso marcado." acao={<button className="cc-btn cc-btn-secondary" onClick={() => { pedirAcao("agenda", "novo"); onNavigate("agenda"); }}><Plus size={16} /> Novo compromisso</button>} />}
         </div>
-        <div className="flex flex-wrap gap-2 mt-4 pt-3 border-t" style={{ borderColor: "var(--border)" }}>
-          {categoriaData.map((c, i) => (
-            <div key={c.categoria} className="rounded-lg px-3 py-2 text-center" style={{ background: cores[i % cores.length] + "18" }}>
-              <p className="cc-display font-bold text-lg" style={{ color: cores[i % cores.length] }}>{c.total}</p>
-              <p className="text-[10px] font-medium" style={{ color: cores[i % cores.length] }}>{c.categoria}</p>
+
+        {/* Categorias */}
+        <div className="cc-card p-4">
+          <h3 className="cc-display font-semibold text-sm mb-3">Eleitores por categoria</h3>
+          {categoriaData.length || semCategoria ? (
+            <div className="flex flex-col gap-2.5">
+              {categoriaData.map((c, i) => (
+                <div key={c.categoria} className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-24 sm:w-32 flex-shrink-0 truncate">{c.categoria}</span>
+                  <div className="flex-1 h-2.5 rounded-full" style={{ background: "var(--border)" }}>
+                    <div className="h-2.5 rounded-full transition-all" style={{ width: `${Math.round(c.total / todos.length * 100)}%`, background: cores[i % cores.length] }} />
+                  </div>
+                  <span className="text-xs font-bold cc-display w-8 text-right">{c.total}</span>
+                </div>
+              ))}
+              {semCategoria > 0 && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-medium w-24 sm:w-32 flex-shrink-0 truncate" style={{ color: "var(--ink-500)" }}>Sem categoria</span>
+                  <div className="flex-1 h-2.5 rounded-full" style={{ background: "var(--border)" }}>
+                    <div className="h-2.5 rounded-full" style={{ width: `${Math.round(semCategoria / (todos.length || 1) * 100)}%`, background: "var(--ink-300)" }} />
+                  </div>
+                  <span className="text-xs font-bold cc-display w-8 text-right" style={{ color: "var(--ink-500)" }}>{semCategoria}</span>
+                </div>
+              )}
             </div>
-          ))}
+          ) : <Vazio texto="Cadastre eleitores para ver a divisão por categoria." />}
         </div>
       </div>
 
+      {/* Acesso rápido */}
       <div className="cc-card p-4">
         <h3 className="cc-display font-semibold text-sm mb-3">Acesso rápido</h3>
-        <div className="grid grid-cols-4 gap-2">
+        <div className="grid grid-cols-4 sm:grid-cols-8 gap-2">
           {[
             { key: "eleitores", label: "Eleitores", icon: Users, cor: "#1B5FC4" },
-            { key: "mensagens", label: "Mensagens", icon: Send, cor: "#25D366" },
-            { key: "relatorios", label: "Votos", icon: Vote, cor: "#38C6C8" },
-            { key: "agenda", label: "Agenda", icon: CalendarIcon, cor: "#F0A202" },
-            { key: "demandas", label: "Demandas", icon: ClipboardList, cor: "#E4572E" },
+            { key: "mensagens", label: "Mensagens", icon: Send, cor: "#1F9D55" },
+            { key: "relatorios", label: "Votos", icon: Vote, cor: "#0E8E90" },
+            { key: "agenda", label: "Agenda", icon: CalendarIcon, cor: "#9A6300" },
+            { key: "demandas", label: "Demandas", icon: ClipboardList, cor: "#C8441F" },
             { key: "liderancas", label: "Lideranças", icon: Crown, cor: "#9A6300" },
-            { key: "gastos", label: "Gastos", icon: Wallet, cor: "#2AA876" },
+            { key: "gastos", label: "Gastos", icon: Wallet, cor: "#1E8E5F" },
             { key: "tarefas", label: "Tarefas", icon: CheckSquare, cor: "#5B6B7C" },
           ].map(item => {
             const Icon = item.icon;
             return (
-              <button key={item.key} onClick={() => onNavigate(item.key)}
-                className="flex flex-col items-center gap-1.5 py-3 rounded-xl"
-                style={{ background: item.cor + "14" }}>
+              <button key={item.key} onClick={() => onNavigate(item.key)} className="flex flex-col items-center gap-1.5 py-3 rounded-2xl min-h-[72px]" style={{ background: item.cor + "12" }}>
                 <Icon size={22} style={{ color: item.cor }} />
-                <span className="text-[10px] font-semibold" style={{ color: item.cor }}>{item.label}</span>
+                <span className="text-[11px] font-semibold" style={{ color: item.cor }}>{item.label}</span>
               </button>
             );
           })}
@@ -385,305 +297,12 @@ function DashboardView({ eleitores, liderancas, demandas, agenda, gastos, materi
   );
 }
 
-function EleitoresView({ items, setItems, liderancas, table, cargoInicial }) {
-  const [query, setQuery] = useState("");
-  const [cargoTab, setCargoTab] = useState(cargoInicial || "Todos");
-  const [modal, setModal] = useState(null);
-
-  const filtered = useMemo(() => items.filter(e => {
-    if (query && !e.nome.toLowerCase().includes(query.toLowerCase())) return false;
-    return true;
-  }), [items, query]);
-
-  const intencaoTone = {
-    "Nosso candidato": { bg: "#E6F7EF", fg: "#1E8E5F" },
-    "Outro candidato": { bg: "#FBE9E7", fg: "#B3402C" },
-    "Indeciso": { bg: "#FFF3DC", fg: "#9A6300" },
-  };
-
-  function openNew() {
-    setModal({ mode: "new", data: { nome: "", telefone: "", lideranca: liderancas[0]?.nome || "", status: "Pendente", categoria: "", tags: "", intencoes: intencoesPadrao(), duplicarTodos: true } });
-  }
-  function openEdit(item) {
-    setModal({ mode: "edit", data: { ...item, tags: (item.tags || []).join(", "), intencoes: { ...intencoesPadrao(), ...(item.intencoes || {}) } } });
-  }
-
-  function save(form) {
-    const tagsArr = form.tags.split(",").map(t => t.trim()).filter(Boolean);
-    const { duplicarTodos, ...rest } = form;
-    if (duplicarTodos && cargoTab !== "Todos") {
-      const intencaoAtual = rest.intencoes[cargoTab] || "Indeciso";
-      const intencoes = {};
-      CARGOS.forEach(c => { intencoes[c] = intencaoAtual; });
-      rest.intencoes = intencoes;
-    }
-    if (modal.mode === "new") {
-      table.insert({ ...rest, tags: tagsArr, cadastro: new Date().toISOString().slice(0, 10) });
-    } else {
-      table.update(rest.id, { ...rest, tags: tagsArr });
-    }
-    setModal(null);
-  }
-  function remove(id) { table.remove(id); }
-  function changeIntencao(id, cargo, intencao) {
-    const eleitor = items.find(e => e.id === id);
-    if (!eleitor) return;
-    const intencoes = { ...intencoesPadrao(), ...(eleitor.intencoes || {}), [cargo]: intencao };
-    table.update(id, { intencoes });
-  }
-
-  return (
-    <div className="flex flex-col gap-4">
-      {/* Sub-abas por cargo */}
-      <div className="flex gap-1 overflow-x-auto cc-scroll pb-1">
-        {["Todos", ...CARGOS].map(tab => (
-          <button key={tab} onClick={() => setCargoTab(tab)}
-            className="flex-shrink-0 px-3 py-2 rounded-lg text-xs font-semibold whitespace-nowrap"
-            style={{ background: cargoTab === tab ? "var(--blue-600)" : "var(--border)", color: cargoTab === tab ? "#fff" : "var(--ink-500)" }}>
-            {tab}
-          </button>
-        ))}
-      </div>
-
-      {/* Contadores da aba atual */}
-      {cargoTab !== "Todos" && (
-        <div className="grid grid-cols-3 gap-2">
-          <div className="cc-card p-2 text-center">
-            <p className="cc-display font-bold text-lg" style={{ color: "#1E8E5F" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Nosso candidato").length}</p>
-            <p className="text-[10px] font-medium" style={{ color: "#1E8E5F" }}>Nosso</p>
-          </div>
-          <div className="cc-card p-2 text-center">
-            <p className="cc-display font-bold text-lg" style={{ color: "#9A6300" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Indeciso" || !e.intencoes?.[cargoTab]).length}</p>
-            <p className="text-[10px] font-medium" style={{ color: "#9A6300" }}>Indeciso</p>
-          </div>
-          <div className="cc-card p-2 text-center">
-            <p className="cc-display font-bold text-lg" style={{ color: "#B3402C" }}>{filtered.filter(e => e.intencoes?.[cargoTab] === "Outro candidato").length}</p>
-            <p className="text-[10px] font-medium" style={{ color: "#B3402C" }}>Outro</p>
-          </div>
-        </div>
-      )}
-
-      <div className="flex flex-col sm:flex-row gap-3 sm:items-center justify-between">
-        <div className="flex flex-1 gap-2">
-          <div className="relative flex-1 max-w-xs">
-            <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2" style={{ color: "var(--ink-300)" }} />
-            <input value={query} onChange={e => setQuery(e.target.value)} placeholder="Buscar por nome..."
-              className={inputCls} style={{ ...inputStyle, paddingLeft: "2rem" }} />
-          </div>
-        </div>
-        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white"
-          style={{ background: "var(--blue-600)" }}>
-          <Plus size={16} /> Novo eleitor
-        </button>
-      </div>
-
-      <div className="flex flex-col gap-2">
-        {filtered.map(e => {
-          const intencao = cargoTab !== "Todos" ? (e.intencoes?.[cargoTab] || "Indeciso") : null;
-          const tone = intencao ? intencaoTone[intencao] || intencaoTone["Indeciso"] : null;
-          return (
-            <div key={e.id} className="cc-card p-3 flex flex-col gap-2">
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                    {e.nome?.[0] || "?"}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{e.nome}</p>
-                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{e.telefone}{e.categoria ? ` • ${e.categoria}` : ""}</p>
-                  </div>
-                </div>
-                <div className="flex items-center gap-1">
-                  <button onClick={() => openEdit(e)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                  <button onClick={() => remove(e.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
-                </div>
-              </div>
-              {cargoTab !== "Todos" ? (
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-medium" style={{ color: "var(--ink-500)" }}>{cargoTab}:</span>
-                  <select value={intencao} onChange={ev => changeIntencao(e.id, cargoTab, ev.target.value)}
-                    className="text-xs font-medium rounded-full px-2 py-1 border-0 outline-none"
-                    style={{ background: tone.bg, color: tone.fg }}>
-                    {INTENCOES.map(i => <option key={i}>{i}</option>)}
-                  </select>
-                </div>
-              ) : (
-                <div className="flex flex-wrap gap-1">
-                  {CARGOS.map(c => {
-                    const int = e.intencoes?.[c] || "Indeciso";
-                    const t = intencaoTone[int] || intencaoTone["Indeciso"];
-                    return (
-                      <span key={c} className="text-[10px] px-2 py-0.5 rounded-full" style={{ background: t.bg, color: t.fg }}>
-                        {c.replace("Deputado ", "Dep. ")}: {int === "Nosso candidato" ? "Nosso" : int === "Outro candidato" ? "Outro" : "Ind."}
-                      </span>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          );
-        })}
-        {filtered.length === 0 && <EmptyState text="Nenhum eleitor encontrado." />}
-      </div>
-
-      {modal && (
-        <Modal title={modal.mode === "new" ? "Novo eleitor" : "Editar eleitor"} onClose={() => setModal(null)}>
-          <FormEleitor data={modal.data} liderancas={liderancas} onSave={save} cargoAtual={cargoTab} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function FormEleitor({ data, liderancas, onSave, cargoAtual }) {
-  const [form, setForm] = useState(data);
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
-      <Field label="Nome completo">
-        <input required className={inputCls} style={inputStyle} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} />
-      </Field>
-      <div className="grid grid-cols-2 gap-3">
-        <Field label="Telefone / WhatsApp">
-          <input required className={inputCls} style={inputStyle} value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} />
-        </Field>
-        <Field label="CPF (opcional)">
-          <input className={inputCls} style={inputStyle} value={form.cpf || ""} onChange={e => setForm({ ...form, cpf: e.target.value })} placeholder="000.000.000-00" />
-        </Field>
-      </div>
-      <Field label="Categoria">
-        <select className={inputCls} style={inputStyle} value={form.categoria || ""} onChange={e => setForm({ ...form, categoria: e.target.value })}>
-          <option value="">Sem categoria</option>
-          {CATEGORIAS.map(c => <option key={c}>{c}</option>)}
-        </select>
-      </Field>
-      <Field label="Nível de votação">
-        <select className={inputCls} style={inputStyle} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-          <option>Confirmado</option><option>Pendente</option><option>Indeciso</option>
-        </select>
-      </Field>
-      <Field label="Liderança responsável">
-        <select className={inputCls} style={inputStyle} value={form.lideranca} onChange={e => setForm({ ...form, lideranca: e.target.value })}>
-          <option value="">Selecionar</option>
-          {liderancas.map(l => <option key={l.id}>{l.nome}</option>)}
-        </select>
-      </Field>
-      <Field label="Tags (separadas por vírgula)">
-        <input className={inputCls} style={inputStyle} value={form.tags} onChange={e => setForm({ ...form, tags: e.target.value })} placeholder="saúde, educação..." />
-      </Field>
-      <div className="mt-1 mb-3">
-        <span className="text-sm font-medium block mb-2" style={{ color: "var(--ink-500)" }}>Intenção de voto por cargo</span>
-        <div className="flex flex-col gap-2">
-          {CARGOS.map(cargo => (
-            <div key={cargo} className="flex items-center justify-between gap-2">
-              <span className="text-xs flex-1">{cargo}</span>
-              <select
-                className="text-xs border rounded-lg px-2 py-1.5"
-                style={inputStyle}
-                value={form.intencoes?.[cargo] || "Indeciso"}
-                onChange={e => setForm({ ...form, intencoes: { ...form.intencoes, [cargo]: e.target.value } })}
-              >
-                {INTENCOES.map(i => <option key={i}>{i}</option>)}
-              </select>
-            </div>
-          ))}
-        </div>
-        {form.duplicarTodos !== undefined && cargoAtual !== "Todos" && (
-          <label className="flex items-center gap-2 text-xs mt-3 cursor-pointer" style={{ color: "var(--blue-600)" }}>
-            <input type="checkbox" checked={form.duplicarTodos || false} onChange={e => setForm({ ...form, duplicarTodos: e.target.checked })} />
-            <span className="font-medium">Aplicar a mesma intenção para todos os cargos</span>
-          </label>
-        )}
-      </div>
-      <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
-        Salvar
-      </button>
-    </form>
-  );
-}
-
-function LiderancasView({ items, setItems, eleitores, table }) {
-  const [modal, setModal] = useState(null);
-
-  function openNew() { setModal({ mode: "new", data: { nome: "", telefone: "", status: "Ativa" } }); }
-  function openEdit(item) { setModal({ mode: "edit", data: item }); }
-  function save(form) {
-    if (modal.mode === "new") {
-      table.insert({ ...form, apoiadores: 0 });
-    } else {
-      table.update(form.id, form);
-    }
-    setModal(null);
-  }
-  function remove(id) { table.remove(id); }
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="flex justify-end">
-        <button onClick={openNew} className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>
-          <Plus size={16} /> Nova liderança
-        </button>
-      </div>
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {items.map(l => {
-          const vinculados = eleitores.filter(e => e.lideranca === l.nome).length;
-          return (
-            <div key={l.id} className="cc-card p-4 flex flex-col gap-3">
-              <div className="flex items-start justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full flex items-center justify-center font-semibold cc-display" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                    {l.nome.split(" ").map(n => n[0]).slice(0, 2).join("")}
-                  </div>
-                  <div>
-                    <p className="font-semibold text-sm">{l.nome}</p>
-                    <p className="text-xs" style={{ color: "var(--ink-500)" }}>{l.telefone}</p>
-                  </div>
-                </div>
-                <div className="flex gap-1">
-                  <button onClick={() => openEdit(l)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={13} /></button>
-                  <button onClick={() => remove(l.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={13} style={{ color: "var(--red-500)" }} /></button>
-                </div>
-              </div>
-              <div className="flex items-center gap-1.5 text-xs" style={{ color: "var(--ink-500)" }}>
-                <Phone size={12} /> {l.telefone}
-              </div>
-              <div className="flex items-center justify-between pt-2 border-t" style={{ borderColor: "var(--border)" }}>
-                <span className="text-xs" style={{ color: "var(--ink-500)" }}>Apoiadores vinculados</span>
-                <span className="cc-display font-bold text-sm">{vinculados}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-      {modal && (
-        <Modal title={modal.mode === "new" ? "Nova liderança" : "Editar liderança"} onClose={() => setModal(null)}>
-          <FormLideranca data={modal.data} onSave={save} />
-        </Modal>
-      )}
-    </div>
-  );
-}
-
-function FormLideranca({ data, onSave }) {
-  const [form, setForm] = useState(data);
-  return (
-    <form onSubmit={e => { e.preventDefault(); onSave(form); }}>
-      <Field label="Nome"><input required className={inputCls} style={inputStyle} value={form.nome} onChange={e => setForm({ ...form, nome: e.target.value })} /></Field>
-      <Field label="Telefone"><input required className={inputCls} style={inputStyle} value={form.telefone} onChange={e => setForm({ ...form, telefone: e.target.value })} /></Field>
-      <Field label="Status">
-        <select className={inputCls} style={inputStyle} value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
-          <option>Ativa</option><option>Inativa</option>
-        </select>
-      </Field>
-      <button type="submit" className="w-full mt-2 py-2.5 rounded-lg text-sm font-semibold text-white" style={{ background: "var(--blue-600)" }}>Salvar</button>
-    </form>
-  );
-}
-
 function DemandasView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statuses = ["Nova", "Em análise", "Em andamento", "Resolvida", "Cancelada"];
 
   function openNew() { setModal({ mode: "new", data: { solicitante: "", categoria: "Saúde", descricao: "", prioridade: "Média", status: "Nova", prazo: "" } }); }
+  useAcaoPendente("demandas", { novo: openNew });
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
@@ -692,6 +311,7 @@ function DemandasView({ items, setItems, table }) {
       table.update(form.id, form);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
   function changeStatus(id, status) { table.update(id, { status }); }
@@ -720,8 +340,8 @@ function DemandasView({ items, setItems, table }) {
                 className="text-xs font-medium rounded-full px-2 py-1 border" style={{ borderColor: "var(--border)" }}>
                 {statuses.map(s => <option key={s}>{s}</option>)}
               </select>
-              <button onClick={() => openEdit(d)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-              <button onClick={() => remove(d.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+              <IconBtn label="Editar" onClick={() => openEdit(d)}><Pencil size={18} /></IconBtn>
+              <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(d.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
             </div>
           </div>
         ))}
@@ -779,6 +399,7 @@ function AgendaView({ items, setItems, table }) {
   }, [items]);
 
   function openNew() { setModal({ mode: "new", data: { titulo: "", data: new Date().toISOString().slice(0, 10), hora: "09:00", local: "", responsavel: "" } }); }
+  useAcaoPendente("agenda", { novo: openNew });
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
@@ -787,6 +408,7 @@ function AgendaView({ items, setItems, table }) {
       table.update(form.id, form);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -814,8 +436,8 @@ function AgendaView({ items, setItems, table }) {
                     </div>
                   </div>
                   <div className="flex gap-1">
-                    <button onClick={() => openEdit(a)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                    <button onClick={() => remove(a.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                    <IconBtn label="Editar" onClick={() => openEdit(a)}><Pencil size={18} /></IconBtn>
+                    <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(a.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                   </div>
                 </div>
               ))}
@@ -855,6 +477,7 @@ function GastosView({ items, setItems, table }) {
   const fmt = v => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   function openNew() { setModal({ mode: "new", data: { descricao: "", categoria: "Material gráfico", valor: "", data: "", observacoes: "" } }); }
+  useAcaoPendente("gastos", { novo: openNew });
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     const payload = { ...form, valor: Number(form.valor) || 0 };
@@ -864,6 +487,7 @@ function GastosView({ items, setItems, table }) {
       table.update(form.id, payload);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -878,7 +502,22 @@ function GastosView({ items, setItems, table }) {
           <Plus size={16} /> Novo gasto
         </button>
       </div>
-      <div className="cc-card overflow-x-auto cc-scroll">
+      <div className="flex flex-col gap-2 md:hidden">
+        {items.map(g => (
+          <div key={g.id} className="cc-card cc-rowcard">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0"><p className="font-semibold">{g.descricao}</p><p className="text-xs" style={{ color: "var(--ink-500)" }}>{g.categoria}{g.data ? " · " + g.data.split("-").reverse().join("/") : ""}</p></div>
+              <p className="cc-display font-bold whitespace-nowrap" style={{ color: "var(--blue-600)" }}>{fmt(Number(g.valor || 0))}</p>
+            </div>
+            <div className="flex justify-end gap-1 -mb-1">
+              <IconBtn label="Editar" onClick={() => openEdit(g)}><Pencil size={18} /></IconBtn>
+              <IconBtn danger label="Excluir" onClick={() => confirmar("Esse gasto será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(g.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 && <div className="cc-card"><EmptyState text="Nenhum gasto registrado." /></div>}
+      </div>
+      <div className="cc-card overflow-x-auto cc-scroll hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left" style={{ color: "var(--ink-500)" }}>
@@ -895,11 +534,11 @@ function GastosView({ items, setItems, table }) {
                 <td className="px-4 py-3 font-medium">{g.descricao}</td>
                 <td className="px-4 py-3" style={{ color: "var(--ink-500)" }}>{g.categoria}</td>
                 <td className="px-4 py-3">{g.data}</td>
-                <td className="px-4 py-3 cc-display font-semibold">{fmt(g.valor)}</td>
+                <td className="px-4 py-3 cc-display font-semibold">{fmt(Number(g.valor || 0))}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => openEdit(g)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                    <button onClick={() => remove(g.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                    <IconBtn label="Editar" onClick={() => openEdit(g)}><Pencil size={18} /></IconBtn>
+                    <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(g.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                   </div>
                 </td>
               </tr>
@@ -950,6 +589,7 @@ function MaterialView({ items, setItems, table }) {
       table.update(form.id, payload);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -969,8 +609,8 @@ function MaterialView({ items, setItems, table }) {
               <div className="flex items-start justify-between">
                 <p className="font-semibold text-sm">{m.nome}</p>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(m)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={13} /></button>
-                  <button onClick={() => remove(m.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={13} style={{ color: "var(--red-500)" }} /></button>
+                  <IconBtn label="Editar" onClick={() => openEdit(m)}><Pencil size={18} /></IconBtn>
+                  <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(m.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                 </div>
               </div>
               <div className="w-full h-2 rounded-full" style={{ background: "var(--border)" }}>
@@ -1023,6 +663,7 @@ function VisitasView({ items, setItems, table }) {
       table.update(form.id, form);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1043,8 +684,8 @@ function VisitasView({ items, setItems, table }) {
               </div>
               <div className="flex items-center gap-2">
                 <span className={`text-xs px-2 py-1 rounded-full ${resultTone[v.resultado] || "cc-badge-nova"}`}>{v.resultado}</span>
-                <button onClick={() => openEdit(v)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                <button onClick={() => remove(v.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => openEdit(v)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(v.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: "var(--ink-500)" }}>
@@ -1107,6 +748,7 @@ function EventosView({ items, setItems, table }) {
       table.update(form.id, payload);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1126,8 +768,8 @@ function EventosView({ items, setItems, table }) {
                 <span className="text-sm font-bold leading-none mt-0.5">{ev.data.slice(8, 10)}</span>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => openEdit(ev)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={13} /></button>
-                <button onClick={() => remove(ev.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={13} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => openEdit(ev)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(ev.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
             <div>
@@ -1177,6 +819,7 @@ function TarefasView({ items, setItems, table }) {
   const statusTone = { "Pendente": "cc-badge-nova", "Em andamento": "cc-badge-andamento", "Concluída": "cc-badge-resolvida" };
 
   function openNew() { setModal({ mode: "new", data: { titulo: "", responsavel: "", prazo: "", prioridade: "Média", status: "Pendente" } }); }
+  useAcaoPendente("tarefas", { novo: openNew });
   function openEdit(item) { setModal({ mode: "edit", data: item }); }
   function save(form) {
     if (modal.mode === "new") {
@@ -1185,6 +828,7 @@ function TarefasView({ items, setItems, table }) {
       table.update(form.id, form);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function changeStatus(id, status) { table.update(id, { status }); }
   function remove(id) { table.remove(id); }
@@ -1211,8 +855,8 @@ function TarefasView({ items, setItems, table }) {
                 className="text-xs font-medium rounded-full px-2 py-1 border" style={{ borderColor: "var(--border)" }}>
                 {statuses.map(s => <option key={s}>{s}</option>)}
               </select>
-              <button onClick={() => openEdit(t)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-              <button onClick={() => remove(t.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+              <IconBtn label="Editar" onClick={() => openEdit(t)}><Pencil size={18} /></IconBtn>
+              <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(t.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
             </div>
           </div>
         ))}
@@ -1300,8 +944,8 @@ function RelatoriosView({ eleitores, metas, setMetas, metasKV, candidatos, candi
                     onBlur={e => saveMeta(cargo, e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") saveMeta(cargo, e.target.value); }} />
                 ) : (
-                  <button onClick={() => setEditingMeta(cargo)} className="cc-display font-semibold text-sm flex items-center gap-1 hover:underline">
-                    {l.meta.toLocaleString("pt-BR")} <Pencil size={10} style={{ color: "var(--ink-300)" }} />
+                  <button onClick={() => setEditingMeta(cargo)} aria-label="Editar meta" className="cc-display font-semibold text-sm flex items-center gap-1.5 hover:underline min-h-[40px] min-w-[40px] px-2 -mx-2 rounded-lg">
+                    {l.meta.toLocaleString("pt-BR")} <Pencil size={14} style={{ color: "var(--ink-300)" }} />
                   </button>
                 )}
               </div>
@@ -1316,8 +960,8 @@ function RelatoriosView({ eleitores, metas, setMetas, metasKV, candidatos, candi
                   onKeyDown={e => { if (e.key === "Enter") saveCandidato(cargo, e.target.value); }} />
               ) : (
                 <button onClick={() => setEditingCandidato(cargo)}
-                  className="flex items-center gap-1.5 text-sm font-medium hover:underline" style={{ color: "var(--blue-600)" }}>
-                  <Pencil size={11} /> {nome}
+                  className="flex items-center gap-1.5 text-sm font-medium hover:underline min-h-[40px] px-2 -mx-2 rounded-lg" style={{ color: "var(--blue-600)" }}>
+                  <Pencil size={14} /> {nome}
                 </button>
               )}
             </div>
@@ -1378,6 +1022,7 @@ function PesquisasView({ items, setItems, table, eleitores }) {
     if (modal.mode === "new") table.insert(payload);
     else table.update(form.id, payload);
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1437,8 +1082,8 @@ function PesquisasView({ items, setItems, table, eleitores }) {
                   <p className="text-xs" style={{ color: "var(--ink-500)" }}>{p.data} • {p.responsavel} • {total} respostas{p.cargo ? ` • ${p.cargo}` : ""}</p>
                 </div>
                 <div className="flex gap-1">
-                  <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                  <button onClick={() => remove(p.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                  <IconBtn label="Editar" onClick={() => openEdit(p)}><Pencil size={18} /></IconBtn>
+                  <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(p.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                 </div>
               </div>
               <div className="flex flex-col gap-2">
@@ -1498,7 +1143,7 @@ function FormPesquisa({ data, onSave }) {
           <div key={idx} className="flex items-center gap-2">
             <input placeholder="Opção de resposta" className={inputCls} style={{ ...inputStyle, flex: 2 }} value={o.texto} onChange={e => updateOpcao(idx, "texto", e.target.value)} />
             <input type="number" placeholder="0" className={inputCls} style={{ ...inputStyle, width: "5rem" }} value={o.respostas} onChange={e => updateOpcao(idx, "respostas", e.target.value)} />
-            <button type="button" onClick={() => removeOpcao(idx)} className="p-2 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+            <IconBtn danger label="Remover" onClick={() => removeOpcao(idx)}><Trash2 size={18} /></IconBtn>
           </div>
         ))}
       </div>
@@ -1523,6 +1168,7 @@ function DocumentosView({ items, setItems, table }) {
       table.update(form.id, form);
     }
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1539,7 +1185,28 @@ function DocumentosView({ items, setItems, table }) {
           <Plus size={16} /> Novo documento
         </button>
       </div>
-      <div className="cc-card overflow-x-auto cc-scroll">
+      <div className="flex flex-col gap-2 md:hidden">
+        {items.map(d => (
+          <div key={d.id} className="cc-card cc-rowcard">
+            <div className="flex items-start justify-between gap-2">
+              <div className="min-w-0">
+                {d.link ? <a href={d.link} target="_blank" rel="noreferrer" className="font-semibold flex items-center gap-1.5" style={{ color: "var(--blue-600)" }}>{d.nome} <ExternalLink size={13} /></a> : <p className="font-semibold">{d.nome}</p>}
+                {d.observacoes && <p className="text-xs mt-0.5" style={{ color: "var(--ink-500)" }}>{d.observacoes}</p>}
+              </div>
+              <span className={`text-xs px-2 py-1 rounded-full whitespace-nowrap ${categoriaTone[d.categoria] || "cc-badge-nova"}`}>{d.categoria}</span>
+            </div>
+            <div className="flex items-center justify-between gap-1 -mb-1">
+              <span className="text-xs" style={{ color: "var(--ink-500)" }}>{d.data ? d.data.split("-").reverse().join("/") : ""}</span>
+              <div className="flex gap-1">
+                <IconBtn label="Editar" onClick={() => openEdit(d)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse documento será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(d.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
+              </div>
+            </div>
+          </div>
+        ))}
+        {items.length === 0 && <div className="cc-card"><EmptyState text="Nenhum documento cadastrado." /></div>}
+      </div>
+      <div className="cc-card overflow-x-auto cc-scroll hidden md:block">
         <table className="w-full text-sm">
           <thead>
             <tr className="text-left" style={{ color: "var(--ink-500)" }}>
@@ -1565,8 +1232,8 @@ function DocumentosView({ items, setItems, table }) {
                 <td className="px-4 py-3" style={{ color: "var(--ink-500)" }}>{d.observacoes}</td>
                 <td className="px-4 py-3">
                   <div className="flex gap-2 justify-end">
-                    <button onClick={() => openEdit(d)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                    <button onClick={() => remove(d.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                    <IconBtn label="Editar" onClick={() => openEdit(d)}><Pencil size={18} /></IconBtn>
+                    <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(d.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                   </div>
                 </td>
               </tr>
@@ -1604,188 +1271,6 @@ function FormDocumento({ data, onSave }) {
   );
 }
 
-function MensagensView({ eleitores }) {
-  const [mensagem, setMensagem] = useState("");
-  const [midia, setMidia] = useState(null);
-  const [midiaPreview, setMidiaPreview] = useState(null);
-  const [filtro, setFiltro] = useState("Todos");
-  const [enviados, setEnviados] = useState({});
-
-  const destinatarios = useMemo(() => eleitores.filter(e => {
-    if (filtro !== "Todos" && e.status !== filtro) return false;
-    return e.telefone;
-  }), [eleitores, filtro]);
-
-  function handleMidia(e) {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMidia(file);
-    setMidiaPreview(URL.createObjectURL(file));
-  }
-
-  function removeMidia() {
-    setMidia(null);
-    if (midiaPreview) URL.revokeObjectURL(midiaPreview);
-    setMidiaPreview(null);
-  }
-
-  function personalizar(texto, eleitor) {
-    return texto
-      .replace(/\{nome\}/gi, eleitor.nome || "")
-      .replace(/\{bairro\}/gi, "Ivatuba")
-      .replace(/\{lideranca\}/gi, eleitor.lideranca || "");
-  }
-
-  function limparTelefone(tel) {
-    const nums = (tel || "").replace(/\D/g, "");
-    if (nums.startsWith("55")) return nums;
-    return "55" + nums;
-  }
-
-  async function enviarWhatsApp(eleitor) {
-    const texto = personalizar(mensagem, eleitor);
-    const tel = limparTelefone(eleitor.telefone);
-
-    if (midia && navigator.share) {
-      try {
-        await navigator.share({
-          text: texto,
-          files: [midia],
-        });
-        setEnviados(prev => ({ ...prev, [eleitor.id]: true }));
-        return;
-      } catch (_) {}
-    }
-
-    const url = `https://wa.me/${tel}?text=${encodeURIComponent(texto)}`;
-    window.open(url, "_blank");
-    setEnviados(prev => ({ ...prev, [eleitor.id]: true }));
-  }
-
-  async function enviarTodos() {
-    for (const el of destinatarios) {
-      if (!enviados[el.id]) {
-        await enviarWhatsApp(el);
-        await new Promise(r => setTimeout(r, 500));
-      }
-    }
-  }
-
-  function copiarMensagem(eleitor) {
-    const texto = personalizar(mensagem, eleitor);
-    navigator.clipboard?.writeText(texto);
-  }
-
-  const enviadosCount = destinatarios.filter(e => enviados[e.id]).length;
-
-  return (
-    <div className="flex flex-col gap-4">
-      <div className="cc-card p-4 flex items-start gap-2" style={{ background: "#EAF1FE" }}>
-        <Send size={16} style={{ color: "var(--blue-600)" }} className="mt-0.5 flex-shrink-0" />
-        <p className="text-xs" style={{ color: "var(--navy-900)" }}>
-          Mensagem personalizada via WhatsApp. Use <strong>{"{nome}"}</strong> e <strong>{"{lideranca}"}</strong> para personalizar. Anexe foto ou vídeo para enviar junto.
-        </p>
-      </div>
-
-      <div className="cc-card p-4 flex flex-col gap-3">
-        <h3 className="cc-display font-semibold text-sm">Compor mensagem</h3>
-        <textarea
-          value={mensagem}
-          onChange={e => setMensagem(e.target.value)}
-          placeholder={"Olá {nome}! Aqui é da campanha em Ivatuba. Contamos com seu apoio..."}
-          className="w-full border rounded-lg px-3 py-2.5 text-sm outline-none focus:ring-2 min-h-[100px] resize-y"
-          style={{ borderColor: "var(--border)" }}
-        />
-
-        <div className="flex gap-2">
-          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-            <Image size={14} /> Foto
-            <input type="file" accept="image/*" className="hidden" onChange={handleMidia} />
-          </label>
-          <label className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium cursor-pointer" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-            <Video size={14} /> Vídeo
-            <input type="file" accept="video/*" className="hidden" onChange={handleMidia} />
-          </label>
-        </div>
-
-        {midiaPreview && (
-          <div className="relative inline-block">
-            {midia?.type?.startsWith("video") ? (
-              <video src={midiaPreview} className="w-full max-w-xs rounded-lg" controls style={{ maxHeight: 200 }} />
-            ) : (
-              <img src={midiaPreview} alt="Preview" className="w-full max-w-xs rounded-lg object-cover" style={{ maxHeight: 200 }} />
-            )}
-            <button onClick={removeMidia} className="absolute top-1 right-1 w-6 h-6 rounded-full flex items-center justify-center text-white text-xs" style={{ background: "rgba(0,0,0,0.6)" }}>
-              <X size={14} />
-            </button>
-          </div>
-        )}
-      </div>
-
-      <div className="cc-card p-4 flex flex-col gap-3">
-        <h3 className="cc-display font-semibold text-sm">Filtrar destinatários</h3>
-        <div className="flex gap-2 flex-wrap">
-          {["Todos", "Confirmado", "Pendente", "Indeciso"].map(s => (
-            <button key={s} onClick={() => setFiltro(s)}
-              className="px-3 py-1.5 rounded-full text-xs font-medium"
-              style={{ background: filtro === s ? "var(--blue-600)" : "var(--border)", color: filtro === s ? "#fff" : "var(--ink-500)" }}>
-              {s}
-            </button>
-          ))}
-        </div>
-        <p className="text-xs" style={{ color: "var(--ink-500)" }}>
-          {destinatarios.length} destinatário{destinatarios.length !== 1 ? "s" : ""} • {enviadosCount} enviado{enviadosCount !== 1 ? "s" : ""}
-        </p>
-      </div>
-
-      {mensagem.trim() && destinatarios.length > 0 && (
-        <button onClick={enviarTodos}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-sm font-semibold text-white"
-          style={{ background: "var(--green-500)" }}>
-          <Send size={16} /> Enviar para {destinatarios.length} via WhatsApp
-        </button>
-      )}
-
-      <div className="flex flex-col gap-2">
-        {destinatarios.map(el => {
-          const preview = personalizar(mensagem || "Escreva a mensagem acima...", el);
-          const sent = enviados[el.id];
-          return (
-            <div key={el.id} className="cc-card p-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold" style={{ background: "#EAF1FE", color: "var(--blue-600)" }}>
-                    {el.nome?.[0] || "?"}
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">{el.nome}</p>
-                    <p className="text-[11px]" style={{ color: "var(--ink-500)" }}>{el.telefone}</p>
-                  </div>
-                </div>
-                {sent && <span className="text-[11px] px-2 py-0.5 rounded-full font-medium" style={{ background: "#E6F7EF", color: "#1E8E5F" }}>Enviado</span>}
-              </div>
-              <p className="text-xs px-2 py-1.5 rounded-lg" style={{ background: "var(--paper)", color: "var(--ink-500)" }}>{preview}</p>
-              <div className="flex gap-2">
-                <button onClick={() => enviarWhatsApp(el)}
-                  className="flex-1 flex items-center justify-center gap-1 py-2 rounded-lg text-xs font-semibold text-white"
-                  style={{ background: "#25D366" }}>
-                  <Send size={13} /> WhatsApp
-                </button>
-                <button onClick={() => copiarMensagem(el)}
-                  className="flex items-center gap-1 px-3 py-2 rounded-lg text-xs font-medium"
-                  style={{ background: "var(--border)", color: "var(--ink-500)" }}>
-                  <Copy size={13} /> Copiar
-                </button>
-              </div>
-            </div>
-          );
-        })}
-        {destinatarios.length === 0 && <EmptyState text="Nenhum eleitor com telefone encontrado para os filtros selecionados" />}
-      </div>
-    </div>
-  );
-}
-
 function WhatsGruposView({ items, setItems, table }) {
   const [modal, setModal] = useState(null);
   const statusTone = { "Ativo": "cc-badge-resolvida", "Inativo": "cc-badge-cancelada", "Novo": "cc-badge-nova" };
@@ -1797,6 +1282,7 @@ function WhatsGruposView({ items, setItems, table }) {
     if (modal.mode === "new") table.insert(payload);
     else table.update(form.id, payload);
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1828,8 +1314,8 @@ function WhatsGruposView({ items, setItems, table }) {
               </div>
               <div className="flex items-center gap-1">
                 <span className={`text-xs px-2 py-1 rounded-full ${statusTone[g.status] || "cc-badge-nova"}`}>{g.status}</span>
-                <button onClick={() => openEdit(g)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                <button onClick={() => remove(g.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => openEdit(g)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(g.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
             {g.admin && <p className="text-xs" style={{ color: "var(--ink-500)" }}>Admin: {g.admin}</p>}
@@ -1877,6 +1363,7 @@ function InstagramView({ items, setItems, table }) {
     if (modal.mode === "new") table.insert(payload);
     else table.update(form.id, payload);
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -1910,8 +1397,8 @@ function InstagramView({ items, setItems, table }) {
               </div>
               <div className="flex items-center gap-1">
                 <span className={`text-xs px-2 py-1 rounded-full ${reacaoTone[p.reacao] || "cc-badge-nova"}`}>{p.reacao}</span>
-                <button onClick={() => openEdit(p)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                <button onClick={() => remove(p.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => openEdit(p)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(p.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
             {p.observacoes && <p className="text-xs" style={{ color: "var(--ink-500)" }}>{p.observacoes}</p>}
@@ -1958,6 +1445,7 @@ function VisitaCasaView({ items, setItems, table }) {
     if (modal.mode === "new") table.insert(form);
     else table.update(form.id, form);
     setModal(null);
+    if (modal.mode !== "new") toast("Alterações salvas");
   }
   function remove(id) { table.remove(id); }
 
@@ -2003,8 +1491,8 @@ function VisitaCasaView({ items, setItems, table }) {
                 </div>
                 <div className="flex items-center gap-1">
                   <span className={`text-xs px-2 py-1 rounded-full ${reacaoTone[v.reacao] || "cc-badge-nova"}`}>{v.reacao}</span>
-                  <button onClick={() => openEdit(v)} className="p-1.5 rounded-md hover:bg-gray-100"><Pencil size={14} /></button>
-                  <button onClick={() => remove(v.id)} className="p-1.5 rounded-md hover:bg-gray-100"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                  <IconBtn label="Editar" onClick={() => openEdit(v)}><Pencil size={18} /></IconBtn>
+                  <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remove(v.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                 </div>
               </div>
               <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs" style={{ color: "var(--ink-500)" }}>
@@ -2194,7 +1682,7 @@ function VotacaoPublicaView({ candidatosConfig, candidatosConfigKV, votosTable }
                   <input placeholder="Nº" className={inputCls} style={{ ...inputStyle, width: "4rem" }} value={c.numero} onChange={e => updateCandidato(cargo, idx, "numero", e.target.value)} />
                   <input placeholder="Nome" className={inputCls} style={{ ...inputStyle, flex: 1 }} value={c.nome} onChange={e => updateCandidato(cargo, idx, "nome", e.target.value)} />
                   <input placeholder="Partido" className={inputCls} style={{ ...inputStyle, width: "5rem" }} value={c.partido} onChange={e => updateCandidato(cargo, idx, "partido", e.target.value)} />
-                  <button onClick={() => removeCandidato(cargo, idx)} className="p-1"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                  <IconBtn danger label="Remover" onClick={() => removeCandidato(cargo, idx)}><Trash2 size={18} /></IconBtn>
                 </div>
               ))}
             </div>
@@ -2309,8 +1797,8 @@ function CabosEleitoraisView({ items, setItems, table }) {
                 <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>{c.telefone}</p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setForm(c)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
-                <button onClick={() => remover(c.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => setForm(c)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remover(c.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
             <div className="flex items-center gap-2">
@@ -2409,8 +1897,8 @@ function DiaDView({ eleitores, cabos, fiscaisTable }) {
                 <p className="text-[10px]" style={{ color: "var(--ink-500)" }}>Seção {f2.secao} • {f2.local} • {f2.telefone}</p>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setForm(f2)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
-                <button onClick={() => remover(f2.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => setForm(f2)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remover(f2.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
           ))}
@@ -2434,8 +1922,8 @@ function DiaDView({ eleitores, cabos, fiscaisTable }) {
                 </div>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => setForm(f2)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Pencil size={12} /></button>
-                <button onClick={() => remover(f2.id)} className="p-1.5 rounded-lg" style={{ background: "var(--border)" }}><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => setForm(f2)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(remover(f2.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
           ))}
@@ -2507,7 +1995,7 @@ function HistoricoContatoView({ eleitores, setEleitores, eleitoresTable, histori
               <p className="text-xs mt-1" style={{ color: "var(--ink-500)" }}>{h.descricao}</p>
             </div>
           </div>
-          <button onClick={() => removerContato(h.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+          <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(removerContato(h.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
         </div>
       ))}
       {historicoEleitor.length === 0 && !form && <p className="text-sm text-center py-6" style={{ color: "var(--ink-300)" }}>Nenhum contato registrado</p>}
@@ -2662,7 +2150,8 @@ function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
   }
   function excluirProposta(id) { propostasTable.remove(id); }
 
-  function gerarPDF(dep) {
+  async function gerarPDF(dep) {
+    const { default: jsPDF } = await import("jspdf");
     const depAcoes = acoes.filter(a => a.deputadoId === dep.id);
     const depProps = propostas.filter(p => p.deputadoId === dep.id);
     const doc = new jsPDF();
@@ -3043,7 +2532,7 @@ function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
                   </div>
                   <div className="flex gap-1 ml-2">
                     <button onClick={() => { setFormAcao({ ...a }); setEditAcao(a); setShowAcaoForm(true); }} className="p-1"><Pencil size={12} style={{ color: "var(--blue-600)" }} /></button>
-                    <button onClick={() => excluirAcao(a.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                    <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(excluirAcao(a.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                   </div>
                 </div>
               </div>
@@ -3074,7 +2563,7 @@ function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
                   </div>
                   <div className="flex gap-1 ml-2">
                     <button onClick={() => { setFormProp({ ...p }); setEditProp(p); setShowPropForm(true); }} className="p-1"><Pencil size={12} style={{ color: "var(--blue-600)" }} /></button>
-                    <button onClick={() => excluirProposta(p.id)} className="p-1"><Trash2 size={12} style={{ color: "var(--red-500)" }} /></button>
+                    <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(excluirProposta(p.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
                   </div>
                 </div>
               </div>
@@ -3158,8 +2647,8 @@ function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
                 </div>
               </div>
               <div className="flex flex-col gap-1">
-                <button onClick={() => iniciarEdicaoDep(dep)} className="p-1"><Pencil size={14} style={{ color: "var(--blue-600)" }} /></button>
-                <button onClick={() => excluirDeputado(dep.id)} className="p-1"><Trash2 size={14} style={{ color: "var(--red-500)" }} /></button>
+                <IconBtn label="Editar" onClick={() => iniciarEdicaoDep(dep)}><Pencil size={18} /></IconBtn>
+                <IconBtn danger label="Excluir" onClick={() => confirmar("Esse registro será excluído. Deseja continuar?").then((ok) => ok && Promise.resolve(excluirDeputado(dep.id)).then((r) => r !== false && toast("Excluído")))}><Trash2 size={18} /></IconBtn>
               </div>
             </div>
           </div>
@@ -3177,53 +2666,32 @@ function DeputadosView({ deputadosTable, acoesTable, propostasTable }) {
   );
 }
 
-function EmBreveView({ label }) {
-  return (
-    <div className="cc-card p-10 flex flex-col items-center text-center gap-2">
-      <ChevronRight size={20} style={{ color: "var(--ink-300)" }} />
-      <p className="cc-display font-semibold">{label}</p>
-      <p className="text-sm max-w-sm" style={{ color: "var(--ink-500)" }}>
-        Módulo previsto no plano do CONecta Campanha. Ainda não implementado neste protótipo — entra na próxima etapa junto com a integração ao Supabase.
-      </p>
-    </div>
-  );
-}
-
 // ---------------------------------------------------------------------------
 // App shell
 // ---------------------------------------------------------------------------
-function MoreDrawer({ open, onClose, onNavigate, currentView }) {
-  if (!open) return null;
-  return (
-    <div className="fixed inset-0 z-50" onClick={onClose}>
-      <div className="absolute inset-0" style={{ background: "rgba(10,25,41,0.45)" }} />
-      <div className="absolute bottom-0 left-0 right-0 cc-fade-in rounded-t-2xl overflow-hidden" style={{ background: "var(--surface)" }} onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-5 pt-4 pb-2">
-          <h3 className="cc-display font-semibold text-base">Mais opções</h3>
-          <button onClick={onClose} className="p-1 rounded-md hover:bg-gray-100"><X size={18} /></button>
-        </div>
-        <div className="grid grid-cols-4 gap-1 px-4 pb-6 pt-2">
-          {MORE_ITEMS.filter(m => m.active).map(m => {
-            const Icon = m.icon;
-            const active = currentView === m.key;
-            return (
-              <button key={m.key} onClick={() => { onNavigate(m.key); onClose(); }}
-                className="flex flex-col items-center gap-1.5 py-3 rounded-xl"
-                style={{ background: active ? "#EAF1FE" : "transparent", color: active ? "var(--blue-600)" : "var(--ink-500)" }}>
-                <Icon size={22} />
-                <span className="text-[11px] font-medium">{m.label}</span>
-              </button>
-            );
-          })}
-        </div>
-      </div>
-    </div>
-  );
-}
+const VIEWS_VALIDAS = new Set(NAV_ITEMS.map((i) => i.key));
+const viewDaUrl = () => { const v = (window.location.hash || "").replace(/^#\/?/, ""); return VIEWS_VALIDAS.has(v) ? v : "dashboard"; };
 
 export default function App() {
-  const [view, setView] = useState("dashboard");
-  const [moreOpen, setMoreOpen] = useState(false);
+  const [view, setViewState] = useState(viewDaUrl);
+  const [profundidade, setProfundidade] = useState(0);
+  const [menuAberto, setMenuAberto] = useState(false);
+  const [acoesAbertas, setAcoesAbertas] = useState(false);
+  const [alertasAbertos, setAlertasAbertos] = useState(false);
+  // navegação com histórico: o botão "voltar" do celular volta para a tela anterior
+  const setView = useCallback((v) => {
+    if (!VIEWS_VALIDAS.has(v)) return;
+    setViewState((atual) => {
+      if (atual !== v) { window.history.pushState({ v }, "", "#/" + v); setProfundidade((p) => p + 1); }
+      return v;
+    });
+    window.scrollTo({ top: 0 });
+  }, []);
+  useEffect(() => {
+    const onPop = () => { setViewState(viewDaUrl()); setProfundidade((p) => Math.max(0, p - 1)); window.scrollTo({ top: 0 }); };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
   const eleitoresTable = useSupabaseTable("eleitores", []);
   const liderancasTable = useSupabaseTable("liderancas", []);
   const demandasTable = useSupabaseTable("demandas", []);
@@ -3250,9 +2718,8 @@ export default function App() {
   const eleitoresParanhosTable = useSupabaseTable("eleitores_paranhos", []);
   const mensagensKV = useSupabaseKV("mensagens_config", {}, "chave", "valor");
   const [importando, setImportando] = useState(false);
-  const [aviso, setAviso] = useState(null);
   const tabelasEleitores = { eleitores: eleitoresTable, adriano: eleitoresAdrianoTable, paranhos: eleitoresParanhosTable };
-  const fecharImport = (msg) => { setImportando(false); if (msg) { setAviso(msg); setTimeout(() => setAviso(null), 3000); } };
+  const fecharImport = (msg) => { setImportando(false); if (msg) toast(msg); };
   const exportar = () => exportarPlanilha({ liderancas: liderancasTable.items, tables: tabelasEleitores });
   const depAcoesTable = useSupabaseTable("deputado_acoes", []);
   const depPropostasTable = useSupabaseTable("deputado_propostas", []);
@@ -3285,84 +2752,65 @@ export default function App() {
   const cabos = cabosTable.items;
   const setCabos = cabosTable.setItems;
 
-  const current = MENU.find(m => m.key === view);
+  const carregando = [eleitoresTable, liderancasTable, eleitoresAdrianoTable, eleitoresParanhosTable].some((t) => t.loading);
+  const [splash, setSplash] = useState("on");
+  useEffect(() => {
+    if (splash !== "on") return;
+    const minimo = setTimeout(() => { if (!carregando) setSplash("saindo"); }, 700);
+    const maximo = setTimeout(() => setSplash("saindo"), 5000);
+    return () => { clearTimeout(minimo); clearTimeout(maximo); };
+  }, [carregando, splash]);
+  useEffect(() => { if (splash === "saindo") { const t = setTimeout(() => setSplash("off"), 380); return () => clearTimeout(t); } }, [splash]);
+
+  const alertas = useAlertas({ agenda, tarefas, demandas });
+  const [seq, setSeq] = useState(0);
+  const escolherAcao = (a) => { setAcoesAbertas(false); pedirAcao(a.view, a.acao); if (view === a.view) setSeq((n) => n + 1); else setView(a.view); };
 
   return (
-    <div className="cc-root min-h-screen flex flex-col" style={{ paddingBottom: "calc(64px + env(safe-area-inset-bottom, 0px))" }}>
+    <div className="cc-root min-h-screen cc-with-sidebar">
       <style>{THEME}</style>
+      <Sidebar view={view} onNavigate={setView} />
+      <Header view={view} podeVoltar={profundidade > 0} onVoltar={() => window.history.back()} onMenu={() => setMenuAberto(true)}
+        alertas={alertas} onAlertas={() => setAlertasAbertos(true)} />
 
-      {/* Topbar compacta */}
-      <header className="cc-sash text-white relative z-20">
-        <div className="px-4 sm:px-6 py-3 flex items-center justify-between relative z-10">
-          <div className="flex items-baseline gap-2">
-            <p className="cc-display font-bold text-base leading-tight">CONecta</p>
-            <p className="cc-display font-bold text-base leading-tight" style={{ color: "var(--teal-400)" }}>Campanha</p>
-          </div>
-          <div className="flex items-center gap-1">
-            <span className="text-xs opacity-70">{current?.label}</span>
-          </div>
-        </div>
-      </header>
+      <main className="cc-main">
+        <div key={view + ":" + seq} className="cc-page">
 
-      {/* Main */}
-      <main className="flex-1 p-4 sm:p-6 cc-fade-in">
-        {view === "dashboard" && <DashboardView eleitores={eleitores} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} material={material} onNavigate={setView} />}
-        {view === "eleitores" && <EleitoresPlanilhaView tables={tabelasEleitores} liderancas={liderancas} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
-        {view === "mensagens" && <MensagensPlanilhaView liderancasTable={liderancasTable} tables={tabelasEleitores} msgKV={mensagensKV} onExportar={exportar} />}
-        {view === "whatsgrupos" && <WhatsGruposView items={whatsGruposTable.items} setItems={whatsGruposTable.setItems} table={whatsGruposTable} />}
-        {view === "instagram" && <InstagramView items={instagramTable.items} setItems={instagramTable.setItems} table={instagramTable} />}
-        {view === "visitascasa" && <VisitaCasaView items={visitasCasaTable.items} setItems={visitasCasaTable.setItems} table={visitasCasaTable} />}
-        {view === "liderancas" && <LiderancasPlanilhaView table={liderancasTable} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
-        {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
-        {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
-        {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
-        {view === "material" && <MaterialView items={material} setItems={setMaterial} table={materialTable} />}
-        {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} table={visitasTable} />}
-        {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
-        {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
-        {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} candidatos={candidatos} candidatosKV={candidatosKV} />}
-        {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} eleitores={eleitores} />}
-        {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
-        {view === "votacao" && <VotacaoPublicaView candidatosConfig={candidatosVotacao} candidatosConfigKV={candidatosVotacaoKV} votosTable={votosPublicosTable} />}
-        {view === "cabos" && <CabosEleitoraisView items={cabos} setItems={setCabos} table={cabosTable} />}
-        {view === "diad" && <DiaDView eleitores={eleitores} cabos={cabos} fiscaisTable={fiscaisTable} />}
-        {view === "historico" && <HistoricoContatoView eleitores={eleitores} setEleitores={setEleitores} eleitoresTable={eleitoresTable} historicoTable={historicoTable} />}
-        {view === "exportar" && <ExportarView eleitores={eleitores} cabos={cabos} liderancas={liderancas} />}
-        {view === "deputados" && <DeputadosView deputadosTable={deputadosTable} acoesTable={depAcoesTable} propostasTable={depPropostasTable} />}
-        {current && !current.active && <EmBreveView label={current.label} />}
+          {view === "dashboard" && <DashboardView listas={{ eleitores, adriano: eleitoresAdrianoTable.items, paranhos: eleitoresParanhosTable.items }} liderancas={liderancas} demandas={demandas} agenda={agenda} gastos={gastos} onNavigate={setView} carregando={carregando} />}
+          {view === "eleitores" && <EleitoresPlanilhaView tables={tabelasEleitores} liderancas={liderancas} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
+          {view === "mensagens" && <MensagensPlanilhaView liderancasTable={liderancasTable} tables={tabelasEleitores} msgKV={mensagensKV} onExportar={exportar} />}
+          {view === "whatsgrupos" && <WhatsGruposView items={whatsGruposTable.items} setItems={whatsGruposTable.setItems} table={whatsGruposTable} />}
+          {view === "instagram" && <InstagramView items={instagramTable.items} setItems={instagramTable.setItems} table={instagramTable} />}
+          {view === "visitascasa" && <VisitaCasaView items={visitasCasaTable.items} setItems={visitasCasaTable.setItems} table={visitasCasaTable} />}
+          {view === "liderancas" && <LiderancasPlanilhaView table={liderancasTable} msgKV={mensagensKV} onImportar={() => setImportando(true)} />}
+          {view === "demandas" && <DemandasView items={demandas} setItems={setDemandas} table={demandasTable} />}
+          {view === "agenda" && <AgendaView items={agenda} setItems={setAgenda} table={agendaTable} />}
+          {view === "gastos" && <GastosView items={gastos} setItems={setGastos} table={gastosTable} />}
+          {view === "material" && <MaterialView items={material} setItems={setMaterial} table={materialTable} />}
+          {view === "visitas" && <VisitasView items={visitas} setItems={setVisitas} table={visitasTable} />}
+          {view === "eventos" && <EventosView items={eventos} setItems={setEventos} table={eventosTable} />}
+          {view === "tarefas" && <TarefasView items={tarefas} setItems={setTarefas} table={tarefasTable} />}
+          {view === "relatorios" && <RelatoriosView eleitores={eleitores} metas={metasVotos} setMetas={setMetasVotos} metasKV={metasVotosKV} candidatos={candidatos} candidatosKV={candidatosKV} />}
+          {view === "pesquisas" && <PesquisasView items={pesquisas} setItems={setPesquisas} table={pesquisasTable} eleitores={eleitores} />}
+          {view === "documentos" && <DocumentosView items={documentos} setItems={setDocumentos} table={documentosTable} />}
+          {view === "votacao" && <VotacaoPublicaView candidatosConfig={candidatosVotacao} candidatosConfigKV={candidatosVotacaoKV} votosTable={votosPublicosTable} />}
+          {view === "cabos" && <CabosEleitoraisView items={cabos} setItems={setCabos} table={cabosTable} />}
+          {view === "diad" && <DiaDView eleitores={eleitores} cabos={cabos} fiscaisTable={fiscaisTable} />}
+          {view === "historico" && <HistoricoContatoView eleitores={eleitores} setEleitores={setEleitores} eleitoresTable={eleitoresTable} historicoTable={historicoTable} />}
+          {view === "exportar" && <ExportarView eleitores={eleitores} cabos={cabos} liderancas={liderancas} />}
+          {view === "deputados" && <DeputadosView deputadosTable={deputadosTable} acoesTable={depAcoesTable} propostasTable={depPropostasTable} />}
+              </div>
       </main>
 
-      {/* Bottom Nav */}
-      <nav className="fixed bottom-0 left-0 right-0 z-40 border-t flex" style={{ background: "var(--surface)", borderColor: "var(--border)", paddingBottom: "env(safe-area-inset-bottom, 0px)" }}>
-        {BOTTOM_TABS.map(tab => {
-          const Icon = tab.icon;
-          const active = view === tab.key;
-          return (
-            <button key={tab.key} onClick={() => setView(tab.key)}
-              className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
-              style={{ color: active ? "var(--blue-600)" : "var(--ink-300)" }}>
-              <Icon size={22} strokeWidth={active ? 2.5 : 1.8} />
-              <span className="text-[10px] font-semibold">{tab.label}</span>
-              {active && <span className="w-5 h-0.5 rounded-full mt-0.5" style={{ background: "var(--blue-600)" }} />}
-            </button>
-          );
-        })}
-        <button onClick={() => setMoreOpen(true)}
-          className="flex-1 flex flex-col items-center gap-0.5 py-2.5"
-          style={{ color: MORE_ITEMS.some(m => m.key === view) ? "var(--blue-600)" : "var(--ink-300)" }}>
-          <Settings size={22} strokeWidth={1.8} />
-          <span className="text-[10px] font-semibold">Mais</span>
-          {MORE_ITEMS.some(m => m.key === view) && <span className="w-5 h-0.5 rounded-full mt-0.5" style={{ background: "var(--blue-600)" }} />}
-        </button>
-      </nav>
-
-      <MoreDrawer open={moreOpen} onClose={() => setMoreOpen(false)} onNavigate={setView} currentView={view} />
+      <BottomNav view={view} onNavigate={setView} onMenu={() => setMenuAberto(true)} onFab={() => setAcoesAbertas(true)} />
+      <Drawer open={menuAberto} view={view} onNavigate={setView} onClose={() => setMenuAberto(false)} />
+      {acoesAbertas && <AcoesRapidas onClose={() => setAcoesAbertas(false)} onEscolher={escolherAcao} />}
+      {alertasAbertos && <PainelAlertas alertas={alertas} onClose={() => setAlertasAbertos(false)} onNavigate={setView} />}
       <InstallPrompt />
       {importando && <ImportarPlanilha liderancasTable={liderancasTable} tables={tabelasEleitores} msgKV={mensagensKV} onClose={fecharImport} />}
-      {aviso && (
-        <div role="status" className="fixed left-1/2 -translate-x-1/2 z-[60] px-4 py-2.5 rounded-lg text-sm font-semibold text-white shadow-lg"
-          style={{ background: "var(--navy-950)", bottom: "calc(80px + env(safe-area-inset-bottom, 0px))" }}>{aviso}</div>
-      )}
+      <ToastHost />
+      <ConfirmHost />
+      {splash !== "off" && <LoadingScreen saindo={splash === "saindo"} />}
     </div>
   );
 }
