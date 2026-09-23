@@ -9,7 +9,7 @@ export default defineConfig({
     tailwindcss(),
     VitePWA({
       registerType: "autoUpdate",
-      includeAssets: ["favicon.svg", "icon-192.svg", "icon-512.svg", "icon-maskable.svg"],
+      includeAssets: ["favicon.svg", "icon-192.svg", "icon-512.svg", "icon-maskable.svg", "apple-touch-icon.png"],
       manifest: {
         name: "CONecta Campanha",
         short_name: "Campanha",
@@ -21,7 +21,12 @@ export default defineConfig({
         scope: "/",
         start_url: "/",
         categories: ["productivity", "business"],
+        lang: "pt-BR",
+        id: "/",
         icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png", purpose: "any" },
+          { src: "icon-maskable-512.png", sizes: "512x512", type: "image/png", purpose: "maskable" },
           {
             src: "icon-192.svg",
             sizes: "192x192",
